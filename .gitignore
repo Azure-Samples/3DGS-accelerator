@@ -26,8 +26,7 @@ venv/
 env/
 __pycache__/
 *.pyc
-target/.rustc_info.json
-
+target/
 # Environment variables files
 .env*
 !.env.example
