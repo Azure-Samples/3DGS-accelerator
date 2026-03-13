@@ -4,11 +4,79 @@ Complete guide for configuring and using the 3DGS Video Processor.
 
 ## Table of Contents
 
+* [Quick Start (Recommended)](#quick-start-recommended)
 * [Configuration](#configuration)
 * [Input Preparation](#input-preparation)
 * [Running the Service](#running-the-service)
 * [Output Format](#output-format)
 * [Advanced Usage](#advanced-usage)
+
+## Quick Start (Recommended)
+
+The fastest way to get the full pipeline running is with the **numbered E2E scripts** in `scripts/e2e/`. These handle dependency installation, test data download, building, and running an end-to-end pipeline test — no GPU or Docker required.
+
+### Prerequisites
+
+* Ubuntu 24.04 (or compatible Debian-based system) with `sudo` access
+* [Rust toolchain](https://rustup.rs/) installed (`cargo`, `rustc`)
+
+### Run the Scripts
+
+From the project root, run each script in order:
+
+```bash
+# Step 1: Install system dependencies (ffmpeg, colmap, unzip)
+./scripts/e2e/00-install-deps.sh
+
+# Step 2: Download COLMAP South Building dataset & create 3 test videos
+./scripts/e2e/01-download-testdata.sh
+
+# Step 3: Build the Rust binary in release mode
+./scripts/e2e/02-build.sh
+
+# Step 4: Clean output directories (ensures a fresh starting state)
+./scripts/e2e/03-cleanup.sh
+
+# Step 5: Run the full E2E pipeline test
+./scripts/e2e/04-run-e2e.sh --mode file
+```
+
+### What Happens
+
+1. **00-install-deps.sh** — Installs `ffmpeg`, `colmap`, and `unzip` via apt
+2. **01-download-testdata.sh** — Downloads 128 real multi-view images (~20 MB), creates 3 test videos at 1280×960
+3. **02-build.sh** — Runs `cargo build --release`, outputs `target/release/3dgs-processor`
+4. **03-cleanup.sh** — Wipes `./output/data/{input,processed,error,output}` and `/tmp/3dgs-work`
+5. **04-run-e2e.sh** — Starts the processor in watch mode, copies test videos to trigger a job, waits for COLMAP reconstruction + mock training, verifies output
+
+### Expected Output
+
+```
+📊 Output verification:
+  ✅ PLY file(s):      1 (44K)
+  ✅ SPLAT file(s):    1 (32K)
+  ✅ manifest.json:    present
+
+🎉 ALL E2E TESTS PASSED!
+```
+
+Output files in `./output/data/output/`:
+* `my_scene.ply` — PLY point cloud (mock-generated synthetic geometry)
+* `my_scene.splat` — SPLAT file (mock-generated, valid 32-byte/gaussian format)
+* `manifest.json` — Real video metadata from ffprobe
+
+The input folder moves to `./output/data/processed/my_scene` on success.
+
+### E2E Modes
+
+```bash
+./scripts/e2e/04-run-e2e.sh --mode file     # File/watch mode (local directories)
+./scripts/e2e/04-run-e2e.sh --mode batch    # Batch mode (Azurite Azure emulator, requires Docker)
+./scripts/e2e/04-run-e2e.sh                  # Both modes
+./scripts/e2e/04-run-e2e.sh --timeout 600   # Custom timeout in seconds
+```
+
+> **Note**: The E2E scripts use `BACKEND=mock` (no GPU). Real 3DGS training requires a CUDA GPU and `BACKEND=gsplat` or `BACKEND=gaussian-splatting`.
 
 ## Configuration
 
@@ -123,7 +191,14 @@ For best 3DGS reconstruction quality:
 
 ## Running the Service
 
-### Docker Compose (Recommended)
+### E2E Scripts (Recommended for First Run)
+
+See [Quick Start](#quick-start-recommended) above. The `scripts/e2e/` scripts are the easiest way to run the full pipeline.
+
+### Docker Compose
+
+<details>
+<summary>Docker Compose setup</summary>
 
 Create `docker-compose.yml`:
 
@@ -161,7 +236,12 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
+</details>
+
 ### Direct Docker Run
+
+<details>
+<summary>Direct Docker run</summary>
 
 ```bash
 docker run -d \
@@ -178,7 +258,12 @@ docker run -d \
   3dgs-processor:latest
 ```
 
+</details>
+
 ### Native Binary
+
+<details>
+<summary>Native binary setup</summary>
 
 ```bash
 # Set environment variables
@@ -191,6 +276,8 @@ export BACKEND=gaussian-splatting
 # Run
 ./target/release/3dgs-processor
 ```
+
+</details>
 
 ## Output Format
 

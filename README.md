@@ -21,7 +21,53 @@ Perfect for automated 3DGS processing pipelines in local or cloud environments (
 
 ## Quick Start
 
-### Local Mode
+The fastest way to get the full pipeline running is with the **numbered E2E scripts** in `scripts/e2e/`. These scripts install dependencies, download real test data, build the project, and run an end-to-end test — no GPU or Docker required.
+
+### Prerequisites
+
+* Ubuntu 24.04 (or compatible Debian-based system) with `sudo` access
+* [Rust toolchain](https://rustup.rs/) installed (`cargo`, `rustc`)
+
+### Step-by-Step
+
+```bash
+# 1. Install system dependencies (ffmpeg, colmap, unzip)
+./scripts/e2e/00-install-deps.sh
+
+# 2. Download the COLMAP South Building dataset and create test videos
+./scripts/e2e/01-download-testdata.sh
+
+# 3. Build the Rust binary (release mode)
+./scripts/e2e/02-build.sh
+
+# 4. Clean output directories (ensures a fresh state)
+./scripts/e2e/03-cleanup.sh
+
+# 5. Run the full E2E pipeline test
+./scripts/e2e/04-run-e2e.sh --mode file
+```
+
+Step 5 starts the processor in watch mode, copies the test videos into the input directory, waits for COLMAP reconstruction and mock training to complete, then verifies the output:
+
+```
+📊 Output verification:
+  ✅ PLY file(s):      1 (44K)
+  ✅ SPLAT file(s):    1 (32K)
+  ✅ manifest.json:    present
+
+🎉 ALL E2E TESTS PASSED!
+```
+
+Output files are written to `./output/data/output/` (`my_scene.ply`, `my_scene.splat`, `manifest.json`).
+
+> **Note**: The E2E test uses `BACKEND=mock` (no GPU) with real COLMAP reconstruction and real FFmpeg frame extraction. To produce real 3DGS models, set `BACKEND=gsplat` or `BACKEND=gaussian-splatting` with a CUDA GPU.
+
+### Alternative: Docker Mode
+
+If you prefer running via Docker (e.g., for production or Azure Blob Storage integration):
+
+<details>
+<summary>Local Docker Mode</summary>
 
 ```bash
 # Create directory structure
@@ -53,7 +99,10 @@ ls output/scene_001/
 # -> manifest.json, model.ply, model.splat
 ```
 
-### Azure Blob Storage Mode
+</details>
+
+<details>
+<summary>Azure Blob Storage Mode</summary>
 
 ```bash
 docker run -d --privileged \
@@ -63,6 +112,8 @@ docker run -d --privileged \
   -e BACKEND=gsplat \
   3dgs-processor:latest
 ```
+
+</details>
 
 ## Features
 
@@ -183,24 +234,48 @@ For Azure Blob Storage deployments:
 
 ## Installation
 
-### Pull from Registry
+### Using E2E Scripts (Recommended)
+
+The `scripts/e2e/` directory contains numbered scripts that handle everything:
 
 ```bash
-docker pull 3dgs-processor:latest
+git clone https://github.com/azure-samples/3DGS-accelerator.git
+cd 3DGS-accelerator
+
+# Install deps, download test data, build, and run
+./scripts/e2e/00-install-deps.sh
+./scripts/e2e/01-download-testdata.sh
+./scripts/e2e/02-build.sh
+./scripts/e2e/03-cleanup.sh
+./scripts/e2e/04-run-e2e.sh --mode file
 ```
 
-### Build from Source
+### Build from Source (Manual)
+
+<details>
+<summary>Manual build without E2E scripts</summary>
 
 ```bash
 # Clone repository
-git clone https://github.com/example/3dgs-processor.git
-cd 3dgs-processor
+git clone https://github.com/azure-samples/3DGS-accelerator.git
+cd 3DGS-accelerator
+
+# Install system dependencies
+sudo apt-get install -y ffmpeg colmap
 
 # Build for current architecture
 cargo build --release
 
 # Or build multi-arch Docker image
 ./scripts/build-multiarch.sh --load
+```
+
+</details>
+
+### Pull from Registry
+
+```bash
+docker pull 3dgs-processor:latest
 ```
 
 ## Configuration
@@ -274,9 +349,35 @@ cargo fmt
 
 ## Testing
 
-### Synthetic Test Data (Fast)
+### E2E Pipeline Test (Recommended)
 
-For unit and integration testing during development:
+The fastest way to validate the full pipeline end-to-end:
+
+```bash
+# Run all E2E scripts in sequence (deps → data → build → clean → test)
+./scripts/e2e/00-install-deps.sh
+./scripts/e2e/01-download-testdata.sh
+./scripts/e2e/02-build.sh
+./scripts/e2e/03-cleanup.sh
+./scripts/e2e/04-run-e2e.sh --mode file     # file/watch mode only
+./scripts/e2e/04-run-e2e.sh --mode batch    # batch/Azurite mode only
+./scripts/e2e/04-run-e2e.sh                  # both modes
+```
+
+This uses real COLMAP reconstruction, real FFmpeg frame extraction, and a mock training backend (no GPU required). Outputs are verified automatically.
+
+| Script | Purpose |
+|--------|---------|
+| `00-install-deps.sh` | Install ffmpeg, colmap, unzip via apt |
+| `01-download-testdata.sh` | Download COLMAP South Building dataset, create 3 test videos |
+| `02-build.sh` | `cargo build --release` |
+| `03-cleanup.sh` | Wipe output directories for a clean run |
+| `04-run-e2e.sh` | Start processor, trigger job, verify PLY/SPLAT/manifest output |
+
+### Unit and Integration Tests
+
+<details>
+<summary>Synthetic test data (fast, no external downloads)</summary>
 
 ```bash
 # Generate minimal COLMAP test data
@@ -289,9 +390,12 @@ cargo test --test integration
 BACKEND=mock cargo test
 ```
 
+</details>
+
 ### Real Dataset Testing (Quality Validation)
 
-For realistic quality validation, use the **Tanks and Temples** benchmark:
+<details>
+<summary>Tanks and Temples benchmark</summary>
 
 ```bash
 # Download a scene (~2-20GB)
@@ -329,6 +433,8 @@ cp testdata/sample_scene/*.mp4 testdata/sample_scene/my_scene/
 **Available scenes**: barn, truck, church, caterpillar, courthouse, ignatius, meetingroom
 
 See [docs/TANKS_AND_TEMPLES_TESTING.md](docs/TANKS_AND_TEMPLES_TESTING.md) for complete testing guide.
+
+</details>
 
 ## License
 
