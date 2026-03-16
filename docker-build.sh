@@ -1,10 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-set =x
-
 # Build script for 3DGS Video Processor Docker image
-# Supports multi-arch builds using Docker Buildx
+# Supports multi-arch builds using Docker Buildx (default builder)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
@@ -29,44 +27,19 @@ if ! docker buildx version &> /dev/null; then
     exit 1
 fi
 
-# Create builder instance if it doesn't exist
-BUILDER_NAME="c3dgs-multiarch-builder"
-if ! docker buildx inspect "${BUILDER_NAME}" &> /dev/null; then
-    echo "Creating buildx builder: ${BUILDER_NAME}"
-    docker buildx create --name "${BUILDER_NAME}" --use
-else
-    echo "Using existing buildx builder: ${BUILDER_NAME}"
-    docker buildx use "${BUILDER_NAME}"
-fi
-
-remove_builder() {
-    echo "Cleaning up buildx builder: ${BUILDER_NAME}"
-    docker buildx rm "${BUILDER_NAME}" || true
-}
-
 # Build arguments
 BUILD_ARGS=(
-    --platform "${PLATFORMS}"
     -t "${IMAGE_NAME}:${IMAGE_TAG}"
-    --build-arg RUST_VERSION=1.75
-    --build-arg DEBIAN_VERSION=bookworm
 )
 
 # Add push flag if enabled
 if [ "${PUSH}" = "true" ]; then
-    BUILD_ARGS+=(--push)
+    BUILD_ARGS+=(--platform "${PLATFORMS}" --push)
 else
-    BUILD_ARGS+=(--load)
     echo ""
     echo "NOTE: Building for single platform (--load) since multi-arch requires --push"
     echo "To build multi-arch, set PUSH=true and ensure you have a registry configured"
-    BUILD_ARGS=(
-        --platform linux/amd64
-        -t "${IMAGE_NAME}:${IMAGE_TAG}"
-        --build-arg RUST_VERSION=1.75
-        --build-arg DEBIAN_VERSION=bookworm
-        --load
-    )
+    BUILD_ARGS+=(--platform linux/amd64 --load)
 fi
 
 # Build the image
@@ -85,9 +58,4 @@ if [ "${PUSH}" = "false" ]; then
     echo ""
     echo "To build for multiple architectures and push:"
     echo "  PUSH=true ./docker-build.sh"
-fi
-
-# make this conditional on arg for "remove-builder"
-if [ "${REMOVE_BUILDER:-false}" = "true" ]; then
-    remove_builder
 fi

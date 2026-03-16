@@ -3,7 +3,9 @@
 # Supports multi-arch builds (linux/amd64 and linux/arm64)
 # Build with: docker buildx build --platform linux/amd64,linux/arm64 -t 3dgs-processor:latest .
 
-# Use Rust 1.93 on Bookworm for glibc compatibility with runtime stage
+# ============================================================================
+# Stage 1: Rust build (Bookworm toolchain, binary is glibc-compatible with Ubuntu 24.04)
+# ============================================================================
 FROM rust:1.93-bookworm AS builder
 
 WORKDIR /build
@@ -18,57 +20,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
-# Build with locked dependencies and strip binary for smaller size  
+# Build with locked dependencies and strip binary for smaller size
 RUN cargo build --release --locked && \
     strip target/release/3dgs-processor
 
 # ============================================================================
-# Stage 2: Build COLMAP (separate to leverage caching)
+# Stage 2: Python environment with gsplat (optional backend)
 # ============================================================================
-FROM debian:bookworm-slim AS colmap-builder
-
-# Install all dependencies in a single layer
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    cmake \
-    ninja-build \
-    build-essential \
-    libboost-program-options-dev \
-    libboost-filesystem-dev \
-    libboost-graph-dev \
-    libboost-system-dev \
-    libeigen3-dev \
-    libflann-dev \
-    libfreeimage-dev \
-    libmetis-dev \
-    libgoogle-glog-dev \
-    libsqlite3-dev \
-    libglew-dev \
-    qtbase5-dev \
-    libqt5opengl5-dev \
-    libcgal-dev \
-    libceres-dev \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Build COLMAP from source
-ARG COLMAP_VERSION=3.9
-RUN git clone --branch ${COLMAP_VERSION} --depth 1 https://github.com/colmap/colmap.git /tmp/colmap && \
-    cd /tmp/colmap && \
-    mkdir build && cd build && \
-    cmake .. -GNinja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_TESTING=OFF \
-        -DCMAKE_CXX_FLAGS="-O3" && \
-    ninja && \
-    ninja install && \
-    rm -rf /tmp/colmap
-
-# ============================================================================
-# Stage 3: Python environment with gsplat (optional backend)
-# ============================================================================
-FROM python:3.11-slim-bookworm AS python-builder
+FROM python:3.12-slim-bookworm AS python-builder
 
 # Install build dependencies for Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -89,63 +48,42 @@ RUN pip install --no-cache-dir \
     numpy
 
 # ============================================================================
-# Stage 4: Final runtime image (minimal)
+# Stage 3: Final runtime image (Ubuntu 24.04 with apt-installed COLMAP)
 # ============================================================================
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Install runtime dependencies + FFmpeg + Blobfuse2 in a single layer
+# Install runtime dependencies + COLMAP + FFmpeg + Blobfuse2 in a single layer
 RUN apt-get update && \
-    # Detect architecture
     ARCH=$(dpkg --print-architecture) && \
-    # Add Microsoft repository for Blobfuse2
+    # Install base tools needed for Microsoft repo setup
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         gnupg \
         lsb-release && \
+    # Add Microsoft repository for Blobfuse2
     curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | \
         gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg && \
-    DISTRO=$(lsb_release -is | tr '[:upper:]' '[:lower:]') && \
-    CODENAME=$(lsb_release -cs) && \
-    echo "deb [arch=${ARCH} signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/repos/microsoft-${DISTRO}-${CODENAME}-prod ${CODENAME} main" | \
+    echo "deb [arch=${ARCH} signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/repos/microsoft-ubuntu-noble-prod noble main" | \
         tee /etc/apt/sources.list.d/microsoft.list && \
     apt-get update && \
     # Install runtime dependencies
     apt-get install -y --no-install-recommends \
-        # Core runtime
-        fuse3 \
-        libfuse3-3 \
-        # Python runtime for gsplat backend
-        python3.11 \
-        python3.11-venv \
-        libpython3.11 \
-        # FFmpeg and codecs
+        # COLMAP from Ubuntu universe repo (3.9.1, CPU-only, pulls all deps)
+        colmap \
+        # FFmpeg for frame extraction and metadata
         ffmpeg \
-        libavcodec59 \
-        libavformat59 \
-        libavutil57 \
-        libswscale6 \
-        libavfilter8 \
-        # COLMAP runtime dependencies
-        libboost-filesystem1.74.0 \
-        libboost-program-options1.74.0 \
-        libboost-system1.74.0 \
-        libboost-graph1.74.0 \
-        libfreeimage3 \
-        libgoogle-glog0v6 \
-        libsqlite3-0 \
-        libglew2.2 \
-        libopengl0 \
-        libglx0 \
-        libqt5core5a \
-        libqt5gui5 \
-        libqt5widgets5 \
-        libqt5opengl5 \
-        libceres3 \
-        libmetis5 \
-        libflann1.9 && \
+        # Python runtime for gsplat backend
+        python3 \
+        python3-venv \
+        libpython3.12 \
+        # FUSE for Azure Blob Storage mounting
+        fuse3 \
+        libfuse3-3 && \
     # Install blobfuse2 only on amd64 (not available for arm64)
     if [ "$ARCH" = "amd64" ]; then \
         apt-get install -y --no-install-recommends blobfuse2 && \
@@ -157,19 +95,17 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
     # Verify installations
-    ffmpeg -version > /dev/null
-
-# Copy COLMAP binary from builder stage (shared libs already in runtime image)
-COPY --from=colmap-builder /usr/local/bin/colmap /usr/local/bin/colmap
+    ffmpeg -version > /dev/null && \
+    colmap help > /dev/null 2>&1
 
 # Copy Python virtual environment with gsplat from python-builder
 COPY --from=python-builder /opt/venv /opt/venv
 
-# Fix venv Python symlinks to point to system Python
+# Fix venv Python symlinks to point to system Python 3.12
 RUN cd /opt/venv/bin && \
-    rm -f python python3 python3.11 && \
-    ln -s /usr/bin/python3.11 python3.11 && \
-    ln -s python3.11 python3 && \
+    rm -f python python3 python3.12 && \
+    ln -s /usr/bin/python3.12 python3.12 && \
+    ln -s python3.12 python3 && \
     ln -s python3 python && \
     /opt/venv/bin/python --version
 
