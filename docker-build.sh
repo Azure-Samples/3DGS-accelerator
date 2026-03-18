@@ -9,13 +9,15 @@ cd "${SCRIPT_DIR}"
 
 IMAGE_NAME="${IMAGE_NAME:-3dgs-processor}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+CPU_TAG="cpu-${IMAGE_TAG}"
+GPU_TAG="gpu-${IMAGE_TAG}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 PUSH="${PUSH:-false}"
 
 echo "========================================="
 echo "Building 3DGS Video Processor"
 echo "========================================="
-echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+echo "Image: ${IMAGE_NAME}:${CPU_TAG} (CPU variant)"
 echo "Platforms: ${PLATFORMS}"
 echo "Push: ${PUSH}"
 echo "========================================="
@@ -29,7 +31,8 @@ fi
 
 # Build arguments
 BUILD_ARGS=(
-    -t "${IMAGE_NAME}:${IMAGE_TAG}"
+    --target cpu
+    -t "${IMAGE_NAME}:${CPU_TAG}"
 )
 
 # Add push flag if enabled
@@ -53,12 +56,12 @@ echo "Build complete!"
 echo "========================================="
 if [ "${PUSH}" = "false" ]; then
     echo ""
-    echo "To run the container:"
-    echo "  docker run --rm ${IMAGE_NAME}:${IMAGE_TAG}"
+    echo "To run the container (CPU variant):"
+    echo "  docker run --rm ${IMAGE_NAME}:${CPU_TAG}"
     echo ""
     echo "To build GPU variant:"
-    echo "  docker buildx build --target gpu --platform linux/amd64 --load -t ${IMAGE_NAME}:gpu ."
+    echo "  docker buildx build --target gpu --platform linux/amd64 --load -t ${IMAGE_NAME}:${GPU_TAG} ."
     echo ""
-    echo "To build for multiple architectures and push:"
+    echo "To build for multiple architectures and push (CPU variant):"
     echo "  PUSH=true ./docker-build.sh"
 fi

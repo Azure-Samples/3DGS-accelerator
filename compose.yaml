@@ -12,7 +12,7 @@ version: '3.8'
 services:
   # CPU-only variant (default) — uses apt-installed COLMAP, CPU PyTorch
   3dgs-processor:
-    image: 3dgs-processor:cpu-latest
+    image: 3dgs-processor:latest
     container_name: 3dgs-processor
     restart: unless-stopped
     volumes:

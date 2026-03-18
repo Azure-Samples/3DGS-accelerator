@@ -1,7 +1,9 @@
 # Multi-stage Dockerfile for 3DGS Video Processor
 #
 # Two build targets:
-#   cpu  — Lightweight, multi-arch (amd64 + arm64). Uses apt COLMAP + CPU PyTorch.
+#   cpu  — Lightweight, multi-arch (amd64 + arm64). Uses apt COLMAP + CPU PyTorch, but
+#           still defaults to BACKEND=gsplat (GPU-only). On CPU-only hosts, override
+#           BACKEND (e.g., BACKEND=mock) at runtime.
 #   gpu  — NVIDIA CUDA runtime, COLMAP from source with CUDA, CUDA PyTorch. amd64 only.
 #
 # Usage:

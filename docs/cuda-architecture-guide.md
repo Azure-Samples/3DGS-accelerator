@@ -39,11 +39,17 @@ docker build --target gpu --build-arg CUDA_ARCHITECTURES="75;80;86;89;90" -t 3dg
 ### How SM Codes Work
 
 - Each SM (Streaming Multiprocessor) code represents a GPU micro-architecture generation.
-- A binary compiled for SM 75 will **only** run on SM ≥ 75 GPUs.
-- Specifying multiple codes (e.g., `"75;80;86"`) embeds multiple code paths in the binary
-  (**fat binary**) — larger but runs on all listed architectures.
-- NVIDIA's PTX JIT can forward-compile for newer GPUs, but it adds startup latency.
-  Providing explicit SM codes is recommended for production.
+- Native CUDA machine code (“SASS”) compiled for a given SM (e.g., **75**) is only guaranteed
+  to run on GPUs that provide that same SM version; a binary that contains **only** SM 75
+  code will run on Turing (SM 7.5) but will **not** run on newer major architectures such
+  as Ampere (SM 8.x), Ada (SM 8.9), or Hopper (SM 9.0) unless PTX is also available.
+- Specifying multiple **real** SM codes (e.g., `"75;80;86;89;90"`) embeds multiple native
+  code images in one binary (**fat binary**) — larger, but it can run on any GPU whose SM
+  is included in that list.
+- Including PTX (“virtual” architectures, e.g., `"75-virtual"`) allows the CUDA driver to
+  JIT-compile code for newer GPUs that do not have a matching native image, at the cost of
+  additional startup latency. For production, include native code for every SM you deploy to,
+  and optionally PTX for forward-compatibility with future GPUs.
 
 ---
 
