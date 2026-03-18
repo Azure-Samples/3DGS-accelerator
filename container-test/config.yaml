@@ -20,6 +20,7 @@
 #
 # Can be overridden with BACKEND environment variable
 # Use FORCE_CPU_BACKEND=1 to force mock backend regardless of GPU
+# Use COLMAP_USE_CPU=1 to force COLMAP to CPU-only mode (headless-safe, no OpenGL needed)
 backend: auto
 
 # Frame extraction settings

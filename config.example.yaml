@@ -30,6 +30,11 @@ frame_extraction:
 
 # COLMAP Structure-from-Motion settings
 # These control how camera poses and scene structure are computed
+#
+# GPU control: Set COLMAP_USE_CPU=1 to force COLMAP to use CPU-only mode.
+# This passes --SiftExtraction.use_gpu 0 and --SiftMatching.use_gpu 0 to COLMAP,
+# making it safe to run headless (no OpenGL/display required).
+# This is independent of GPU detection for the 3DGS training backend.
 colmap:
   matcher: exhaustive        # Feature matching strategy: exhaustive | sequential | vocab_tree
                             # exhaustive: Best quality, slowest (all image pairs)

@@ -503,6 +503,7 @@ The backend is resolved by `BackendRegistry::resolve_backend_name()` in this ord
 | `BACKEND` | Backend name to use | `gaussian-splatting` |
 | `PLUGIN_PATH` | Additional plugin search directory | (none) |
 | `FORCE_CPU_BACKEND` | If set, auto-detection selects `mock` | (unset) |
+| `COLMAP_USE_CPU` | If set, forces COLMAP to CPU-only mode (no GPU/OpenGL) | (unset) |
 
 ### Auto-Detection
 

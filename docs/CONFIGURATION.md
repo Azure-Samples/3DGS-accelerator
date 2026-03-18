@@ -104,8 +104,10 @@ frame_extraction:
 
 | YAML Key | Type | Default | Env Override |
 |----------|------|---------|-------------|
-| `colmap.matcher` | string | `"exhaustive"` | — |
+| `colmap.matcher` | string | `"exhaustive"` | `COLMAP_MATCHER` |
 | `colmap.camera_model` | string | `"OPENCV"` | — |
+
+> **CPU-only mode:** Set `COLMAP_USE_CPU=1` to force COLMAP to use CPU for SIFT feature extraction and matching (passes `--SiftExtraction.use_gpu 0` and `--SiftMatching.use_gpu 0`). This is useful for headless servers without OpenGL or when the GPU should be reserved for 3DGS training. This setting is independent of `FORCE_CPU_BACKEND`, which only affects the 3DGS training backend.
 
 #### `colmap.matcher`
 
@@ -241,6 +243,7 @@ These **must** be set. The processor will fail to start without them.
 |----------|------|---------|-------|-------------|
 | `BACKEND` | string | `"gaussian-splatting"` | 3DGS Training | 3DGS backend to use. Overrides the `backend` field in the YAML file. Values: `auto`, `gaussian-splatting`, `gsplat`, `3dgs-cpp`, `mock`. |
 | `FORCE_CPU_BACKEND` | flag | unset | 3DGS Training | If set to any value (e.g., `1`), forces the `mock` backend regardless of GPU detection or `BACKEND` setting. |
+| `COLMAP_USE_CPU` | flag | unset | Reconstruction | If set to any value (e.g., `1`), forces COLMAP to use CPU-only mode by passing `--SiftExtraction.use_gpu 0` and `--SiftMatching.use_gpu 0`. Makes COLMAP headless-safe (no OpenGL/display required). Independent of `FORCE_CPU_BACKEND` and GPU detection for the 3DGS training backend. |
 | `FRAME_RATE` | float | — | Frame Extraction | Overrides `frame_extraction.rate` from the YAML file. |
 | `FRAME_COUNT` | integer | — | Frame Extraction | Overrides `frame_extraction.count` from the YAML file. |
 | `UPLOAD_STABILITY_TIMEOUT_SECS` | integer | `60` | File Watcher | Seconds to wait with no new file events before considering an upload "stable" and starting processing. Prevents processing incomplete uploads. |

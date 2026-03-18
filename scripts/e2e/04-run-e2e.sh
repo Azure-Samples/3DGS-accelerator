@@ -90,6 +90,7 @@ echo ""
 # Common environment variables for both modes
 export BACKEND="mock"
 export FORCE_CPU_BACKEND="1"
+export COLMAP_USE_CPU="1"           # Force COLMAP to CPU-only (no GPU/OpenGL needed)
 export RECONSTRUCTION_BACKEND="colmap"
 export FRAME_RATE="2"
 export MIN_VIDEO_FRAMES="5"

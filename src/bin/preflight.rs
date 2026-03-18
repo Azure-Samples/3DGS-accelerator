@@ -62,6 +62,9 @@ fn main() -> ExitCode {
     if std::env::var("FORCE_CPU_BACKEND").is_ok() {
         println!("  FORCE_CPU_BACKEND: set (forcing mock/CPU)");
     }
+    if std::env::var("COLMAP_USE_CPU").is_ok() {
+        println!("  COLMAP_USE_CPU   : set (COLMAP forced to CPU-only, headless-safe)");
+    }
     println!();
 
     // --- External tool checks ---
@@ -110,6 +113,7 @@ OPTIONS:
 ENVIRONMENT:
     BACKEND               Same as --expect (CLI flag takes precedence)
     FORCE_CPU_BACKEND     If set, forces mock/CPU backend selection
+    COLMAP_USE_CPU        If set, forces COLMAP to CPU-only mode (headless-safe)
 
 BACKENDS:
     gsplat                Requires CUDA GPU + Python + gsplat package

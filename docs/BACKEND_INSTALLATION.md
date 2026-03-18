@@ -46,6 +46,7 @@ Force a specific backend:
 BACKEND=gsplat           # Force gsplat
 BACKEND=gaussian-splatting  # Force gaussian-splatting
 FORCE_CPU_BACKEND=1      # Force mock backend (testing)
+COLMAP_USE_CPU=1         # Force COLMAP to CPU-only (headless-safe)
 ```
 
 ---

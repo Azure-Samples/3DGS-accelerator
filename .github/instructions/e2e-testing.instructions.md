@@ -78,6 +78,7 @@ PROCESSED_PATH=./output/data/processed
 ERROR_PATH=./output/data/error
 BACKEND=mock                    # No GPU required
 FORCE_CPU_BACKEND=1
+COLMAP_USE_CPU=1                # Force COLMAP to CPU-only (headless-safe)
 RECONSTRUCTION_BACKEND=colmap   # Real COLMAP
 COLMAP_MATCHER=sequential       # Much faster than exhaustive on CPU
 COLMAP_MAX_NUM_FEATURES=2048    # Limit features for speed

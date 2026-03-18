@@ -64,6 +64,7 @@ jobs:
         run: ./target/release/3dgs-preflight --expect mock
         env:
           FORCE_CPU_BACKEND: "1"
+          COLMAP_USE_CPU: "1"
 
       - name: Build Docker image
         run: |

@@ -100,13 +100,13 @@ Setting `single_camera=1` forces COLMAP to share a single set of intrinsic param
 
 ### 2.4 GPU Acceleration — `SiftExtraction.use_gpu` / `SiftMatching.use_gpu`
 
-**Current choice:** ❌ Not passed to COLMAP
+**Current choice:** ✅ Implemented — GPU enabled by default, controllable via `COLMAP_USE_CPU` env var.
 
 **Reference `convert.py`:** Passes `--SiftExtraction.use_gpu` and `--SiftMatching.use_gpu` based on `--no_gpu` flag.
 
-**Impact:** COLMAP's GPU-accelerated SIFT extraction is **5–10× faster** than CPU. Since our service already requires GPU for training, we should leverage it for COLMAP steps too.
+**Impact:** COLMAP's GPU-accelerated SIFT extraction is **5–10× faster** than CPU. Since our service already requires GPU for training, we leverage it for COLMAP steps too.
 
-**Suggestion:** Add `--SiftExtraction.use_gpu 1` and `--SiftMatching.use_gpu 1` by default. Add a `COLMAP_NO_GPU` env var to disable when GPU is unavailable or reserved for training.
+**Implementation:** `--SiftExtraction.use_gpu 1` and `--SiftMatching.use_gpu 1` are passed by default. Set `COLMAP_USE_CPU=1` to disable GPU for COLMAP (useful for headless servers or when GPU should be reserved for training). This is independent of `FORCE_CPU_BACKEND`, which only affects the 3DGS training backend.
 
 ---
 
@@ -231,7 +231,7 @@ Mirror the `convert.py` directory structure: work in `distorted/` during SfM, th
 
 | Change | File(s) | Effort |
 |--------|---------|--------|
-| Add `--SiftExtraction.use_gpu` / `--SiftMatching.use_gpu` | `src/colmap/runner.rs` | Small |
+| ~~Add `--SiftExtraction.use_gpu` / `--SiftMatching.use_gpu`~~ | `src/colmap/runner.rs` | ✅ Done — controlled via `COLMAP_USE_CPU` env var |
 | Add `--SequentialMatching.overlap` parameter | `src/colmap/runner.rs`, `src/config/yaml.rs` | Small |
 
 ### Priority 3 — Quality Improvements

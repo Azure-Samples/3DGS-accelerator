@@ -101,6 +101,7 @@ OPTIONS:
 ENVIRONMENT:
     BACKEND               Same as --expect (CLI flag takes precedence)
     FORCE_CPU_BACKEND     If set, forces mock/CPU backend selection
+    COLMAP_USE_CPU        If set, forces COLMAP to CPU-only mode (headless-safe)
     GSPLAT_PYTHON         Python interpreter for gsplat check (default: python3)
 ```
 
