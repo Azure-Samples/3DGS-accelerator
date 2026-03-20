@@ -54,7 +54,7 @@ Every field is optional — you only need to specify values you want to change f
 | Value | Description |
 |-------|-------------|
 | `auto` | Auto-select based on GPU detection (recommended) |
-| `gaussian-splatting` | Reference Python implementation; supports CPU and GPU (CUDA, Metal, ROCm) |
+| `gaussian-splatting` | Reference Python implementation; supports CPU and GPU (CUDA) |
 | `gsplat` | Python/CUDA-optimized implementation; requires an NVIDIA GPU |
 | `3dgs-cpp` | Experimental C++ implementation |
 | `mock` | Fast mock backend for testing — no real training is performed |
@@ -64,8 +64,8 @@ Every field is optional — you only need to specify values you want to change f
 | Detected GPU | Backend selected |
 |-------------|-----------------|
 | NVIDIA (CUDA) | `gsplat` |
-| Apple Silicon (Metal) | `gaussian-splatting` |
-| AMD (ROCm) | `gaussian-splatting` |
+<!-- | Apple Silicon (Metal) | `gaussian-splatting` | -->
+<!-- | AMD (ROCm) | `gaussian-splatting` | -->
 | None | `mock` |
 
 **Special env var:** Set `FORCE_CPU_BACKEND=1` to force the `mock` backend regardless of GPU detection.

@@ -48,8 +48,8 @@ Probes for GPU hardware in priority order:
 | Platform | Detection Method | Recommended Backend |
 |----------|-----------------|---------------------|
 | NVIDIA CUDA | `nvidia-smi` → PyTorch fallback | `gsplat` |
-| Apple Metal | `sysctl` (macOS only) | `gaussian-splatting` |
-| AMD ROCm | `rocm-smi` | `gaussian-splatting` |
+<!-- | Apple Metal | `sysctl` (macOS only) | `gaussian-splatting` | -->
+<!-- | AMD ROCm | `rocm-smi` | `gaussian-splatting` | -->
 | None (CPU) | — | `mock` |
 
 Reports: device name, VRAM (GB), platform, and usability.
@@ -81,7 +81,7 @@ When `--expect` is provided (or `BACKEND` env var is set), the tool validates th
 | Backend | Requirements |
 |---------|-------------|
 | `gsplat` | CUDA GPU + `python3` + `gsplat` Python package |
-| `gaussian-splatting` | Any GPU (CUDA, Metal, or ROCm) |
+| `gaussian-splatting` | Any GPU (CUDA) note: Metal, or ROCm not validated|
 | `3dgs-cpp` | CUDA GPU |
 | `mock` | None (always passes) |
 

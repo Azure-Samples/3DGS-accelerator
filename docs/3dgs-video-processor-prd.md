@@ -290,7 +290,7 @@ export:
 | Base language | Rust |
 | Container format | OCI-compliant |
 | Architectures | Multi-arch: x86_64 (amd64) and arm64 |
-| GPU support | Optional (CUDA/ROCm when available, CPU fallback) |
+| GPU support | Optional (CUDA when available, CPU fallback) |
 | Privileged mode | Required (for blobfuse2 FUSE mounting) |
 
 ### 8.2 Container Contents

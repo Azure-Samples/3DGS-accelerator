@@ -305,13 +305,11 @@ For best results with Tanks and Temples:
 export BACKEND=gsplat
 export CUDA_VISIBLE_DEVICES=0
 
-# AMD/Apple GPU
-export BACKEND=gaussian-splatting
-
 # CPU fallback (slow)
 export BACKEND=gaussian-splatting
 export FORCE_CPU_BACKEND=1
 ```
+<!-- # AMD/Apple GPU: export BACKEND=gaussian-splatting -->
 
 ## Expected Results
 

@@ -12,8 +12,8 @@
   - File: `src/backends/gpu_detect.rs` (NEW)
   - Files updated: `src/backends/registry.rs`, `src/processor/job.rs`, `src/processor/retry.rs`, `src/main.rs`
   - Features implemented:
-    - Auto-detect CUDA, Metal, and ROCm GPUs
-    - Recommend optimal backend based on hardware (gsplat for CUDA, gaussian-splatting for Metal/ROCm)
+    - Auto-detect CUDA GPUs
+    - Recommend optimal backend based on hardware (gsplat for CUDA)
     - Graceful CPU fallback to mock backend when no GPU detected
     - Environment variables: `BACKEND=auto` (default), `FORCE_CPU_BACKEND=1`
     - Reports GPU status on startup with device name and VRAM
@@ -262,7 +262,7 @@
   - All 7 validation tests passing (6 MockBackend + 1 Gsplat CPU)
   - MockBackend fixed to create actual model files on disk
   - **Gsplat tested on CPU - proves graceful degradation from GPU to CPU works!**
-  - Ready for: GPU performance testing (CUDA/Metal) for comparison
+  - Ready for: GPU performance testing (CUDA) for comparison
 
 - [x] **Complete E2E test suite** ✅ (February 27, 2026)
   - File: `tests/e2e/main.rs`
@@ -327,14 +327,14 @@
   - Created `docs/BACKEND_INSTALLATION.md` (comprehensive guide)
   - Documented all backends: Mock, gaussian-splatting, gsplat, 3DGS.cpp
   - Installation instructions for pip, source, and Docker
-  - GPU-specific setup (NVIDIA CUDA, Apple Metal, AMD ROCm)
+  - GPU-specific setup (NVIDIA CUDA)
   - Backend selection logic and troubleshooting
   - Verification tests and validation procedures
 
 - [x] **Add hardware requirements documentation** ✅ (February 27, 2026)
   - Added comprehensive hardware requirements section to README.md
   - Defined minimum, recommended, and production tiers
-  - GPU recommendations by vendor (NVIDIA, Apple, AMD)
+  - GPU recommendations by vendor (NVIDIA)
   - Storage requirements per job size estimation
   - Memory usage guidelines
   - Platform support matrix (Linux, macOS, Windows)
@@ -511,7 +511,7 @@
 
 ### Blockers
 
-- **GPU performance testing**: Need CUDA or Metal GPU for performance comparison (CPU baseline established)
+- **GPU performance testing**: Need CUDA GPU for performance comparison (CPU baseline established)
 - **Azure testing**: Need Azure subscription or Azurite setup
 - **Multi-arch Docker build**: Need buildx setup for arm64 + amd64 images
 

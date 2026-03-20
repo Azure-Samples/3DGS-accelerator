@@ -206,7 +206,7 @@ Create `docker-compose.yml`:
 version: '3.8'
 services:
   3dgs-processor:
-    image: 3dgs-processor:latest
+    image: 3dgs-processor:gpu
     container_name: 3dgs-processor
     restart: unless-stopped
     volumes:
@@ -220,7 +220,7 @@ services:
       OUTPUT_PATH: /data/output
       PROCESSED_PATH: /data/processed
       ERROR_PATH: /data/error
-      BACKEND: gaussian-splatting
+      BACKEND: gsplat
       LOG_LEVEL: info
     logging:
       driver: json-file
@@ -254,8 +254,8 @@ docker run -d \
   -e OUTPUT_PATH=/data/output \
   -e PROCESSED_PATH=/data/processed \
   -e ERROR_PATH=/data/error \
-  -e BACKEND=gaussian-splatting \
-  3dgs-processor:latest
+  -e BACKEND=gsplat \
+  3dgs-processor:gpu
 ```
 
 </details>
@@ -413,7 +413,7 @@ docker run -d \
   -e HEALTH_CHECK_ENABLED=true \
   -e HEALTH_CHECK_PORT=8080 \
   -p 8080:8080 \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:cpu
 ```
 
 #### Query Progress

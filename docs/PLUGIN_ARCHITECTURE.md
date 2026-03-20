@@ -494,7 +494,7 @@ The backend is resolved by `BackendRegistry::resolve_backend_name()` in this ord
 |----------|--------|---------|
 | 1 (highest) | `BACKEND` environment variable | `export BACKEND=gsplat` |
 | 2 | `backend` field in YAML config file | `backend: "3dgs-cpp"` |
-| 3 (lowest) | Auto-detection based on GPU | CUDA → `gsplat`, Metal → `gaussian-splatting`, None → `mock` |
+| 3 (lowest) | Auto-detection based on GPU | CUDA → `gsplat`, None → `mock` |
 
 ### Environment Variables
 
@@ -512,8 +512,8 @@ When no backend is explicitly configured (or `backend: "auto"` in YAML), the sys
 | GPU Detected | Selected Backend |
 |-------------|-----------------|
 | NVIDIA/CUDA | `gsplat` |
-| Apple Metal | `gaussian-splatting` |
-| AMD ROCm | `gaussian-splatting` |
+<!-- | Apple Metal | `gaussian-splatting` | -->
+<!-- | AMD ROCm | `gaussian-splatting` | -->
 | None | `mock` (with warning) |
 
 ---

@@ -254,7 +254,7 @@ print(f'{stages.get(stage, 0)}%')
 docker run -d --name 3dgs-processor \
   -e INPUT_PATH=/mnt/input \
   -e OUTPUT_PATH=/mnt/output \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:cpu
 
 # ... processor crashes or is stopped ...
 

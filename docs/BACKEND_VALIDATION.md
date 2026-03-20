@@ -221,7 +221,7 @@ pub struct BackendOutput {
 
 ### GPU Backend Testing
 - [x] Test with real `gsplat` backend on CPU ✅ **COMPLETED**
-- [ ] Test with real `gsplat` backend on CUDA/Metal GPU for performance comparison
+- [ ] Test with real `gsplat` backend on CUDA GPU for performance comparison
 - [ ] Test with `gaussian-splatting` backend (requires CUDA GPU)
 - [ ] Benchmark training performance across backends
 - [ ] Compare quality metrics (PSNR, SSIM) between backends

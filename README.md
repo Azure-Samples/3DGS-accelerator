@@ -76,6 +76,7 @@ mkdir -p input output processed error
 # Run container
 docker run -d \
   --name 3dgs-processor \
+  --gpus all \
   -v $(pwd)/input:/data/input \
   -v $(pwd)/output:/data/output \
   -v $(pwd)/processed:/data/processed \
@@ -84,8 +85,8 @@ docker run -d \
   -e OUTPUT_PATH=/data/output \
   -e PROCESSED_PATH=/data/processed \
   -e ERROR_PATH=/data/error \
-  -e BACKEND=gaussian-splatting \
-  3dgs-processor:latest
+  -e BACKEND=gsplat \
+  3dgs-processor:gpu
 
 # Copy multi-view videos to input directory
 mkdir -p input/scene_001
@@ -110,7 +111,7 @@ docker run -d --privileged \
   -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=..." \
   -e AZURE_CONTAINER_NAME=3dgs-input \
   -e BACKEND=gsplat \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 </details>
@@ -147,7 +148,7 @@ Suitable for: Pipeline testing, development, small test scenes
 | **CPU** | 8 cores, 3.0 GHz+ (Intel i7/Ryzen 7 or better) |
 | **RAM** | 16 GB |
 | **Storage** | 100 GB free SSD |
-| **GPU** | 6-8 GB VRAM (NVIDIA RTX 3060, Apple M1/M2, AMD RX 6700 XT) |
+| **GPU** | 6-8 GB VRAM (NVIDIA RTX 3060) |
 
 Suitable for: 2-5 videos, 30-60 seconds each, 1080p resolution
 
@@ -160,7 +161,7 @@ Suitable for: 2-5 videos, 30-60 seconds each, 1080p resolution
 | **CPU** | 16+ cores, 3.5 GHz+ (Intel Xeon, AMD EPYC, Ryzen 9) |
 | **RAM** | 32 GB+ |
 | **Storage** | 500 GB+ NVMe SSD |
-| **GPU** | 12-24 GB VRAM (NVIDIA RTX 3090/4090, A100, Apple M2 Ultra) |
+| **GPU** | 12-24 GB VRAM (NVIDIA RTX 3090/4090, A100) |
 
 Suitable for: 5-10+ videos, 2-5 minutes each, 4K resolution
 
@@ -174,6 +175,7 @@ Suitable for: 5-10+ videos, 2-5 minutes each, 4K resolution
 - ✅ A100/A6000 (40-80 GB VRAM) for production
 - Backend: **gsplat** (optimized for CUDA)
 
+<!--
 **Apple Metal**:
 - ✅ M1/M2/M3 (8-24 GB unified memory)
 - ✅ M1/M2/M3 Pro/Max/Ultra (16-192 GB)
@@ -183,6 +185,7 @@ Suitable for: 5-10+ videos, 2-5 minutes each, 4K resolution
 - ✅ RX 6700 XT, 6800 XT, 6900 XT (12-16 GB VRAM)
 - ✅ Radeon VII, Instinct MI100/MI200 series
 - Backend: **gaussian-splatting** (ROCm support)
+-->
 
 **CPU-Only** (Testing):
 - ⚠️ Mock backend only (no real training)
@@ -275,7 +278,12 @@ cargo build --release
 ### Pull from Registry
 
 ```bash
-docker pull 3dgs-processor:latest
+# CPU variant (mock backend, no GPU required) — published at cicorias/3dgs-processor
+docker pull cicorias/3dgs-processor:cpu
+
+# GPU variant — must be built locally or pushed to your own registry:
+docker buildx build --target gpu -t youracr.azurecr.io/3dgs-processor:gpu .
+docker push youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 ## Configuration
@@ -404,7 +412,7 @@ cargo test --test e2e -- --ignored --nocapture
 cargo test -- --include-ignored
 ```
 
-> **Note**: These tests orchestrate Docker containers from the host — they do not need to run *inside* a container. They do require Docker to be installed, running, and the `3dgs-processor:test` image to be built (`docker build -t 3dgs-processor:test .`).
+> **Note**: These tests orchestrate Docker containers from the host — they do not need to run *inside* a container. They do require Docker to be installed, running, and the `3dgs-processor:cpu` image to be built (`docker buildx build --target cpu -t 3dgs-processor:cpu .`).
 
 ### Real Dataset Testing (Quality Validation)
 

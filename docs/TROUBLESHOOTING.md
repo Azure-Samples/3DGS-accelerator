@@ -409,7 +409,7 @@ az role assignment list \
 
 ```bash
 # Start container with bash
-docker run -it --entrypoint bash 3dgs-processor:latest
+docker run -it --entrypoint bash youracr.azurecr.io/3dgs-processor:cpu
 
 # Manually run processor
 INPUT_PATH=/data/input OUTPUT_PATH=/data/output /app/3dgs-processor
@@ -607,7 +607,7 @@ docker exec 3dgs-processor python -c "import torch; print(torch.cuda.is_availabl
 # If False, restart with GPU support
 docker run --gpus all \
   -e BACKEND=gsplat \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 
 # Verify GPU detected in logs
 docker logs 3dgs-processor | grep -i gpu
@@ -848,7 +848,7 @@ netstat -tulpn | grep 8080
 
 # Use different port
 docker run -p 8081:8080 \  # Map internal 8080 to host 8081
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:cpu
 
 # Access health endpoint
 curl http://localhost:8081/health
@@ -931,7 +931,7 @@ docker exec 3dgs-processor ps aux --sort=-rss
 1. **Set memory limits**:
    ```bash
    docker run --memory=8g --memory-swap=12g \
-     3dgs-processor:latest
+     youracr.azurecr.io/3dgs-processor:cpu
    ```
 
 2. **Reduce concurrent processing**:
@@ -999,8 +999,8 @@ docker exec 3dgs-processor ps aux --sort=-rss
    
    # Or manually select
    -e BACKEND=gsplat  # NVIDIA CUDA
-   -e BACKEND=gaussian-splatting  # Metal/ROCm
    ```
+<!-- -e BACKEND=gaussian-splatting  # Metal/ROCm -->
 
 ## Still Having Issues?
 

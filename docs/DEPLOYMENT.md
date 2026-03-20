@@ -23,7 +23,7 @@ version: '3.8'
 
 services:
   3dgs-processor:
-    image: 3dgs-processor:latest
+    image: 3dgs-processor:gpu
     container_name: 3dgs-processor
     restart: unless-stopped
     
@@ -51,7 +51,7 @@ services:
       OUTPUT_PATH: /data/output
       PROCESSED_PATH: /data/processed
       ERROR_PATH: /data/error
-      BACKEND: gaussian-splatting
+      BACKEND: gsplat
       LOG_LEVEL: info
       STABILITY_TIMEOUT_SECS: 30
       MAX_RETRIES: 3
@@ -103,7 +103,7 @@ spec:
     spec:
       containers:
       - name: processor
-        image: 3dgs-processor:latest
+        image: 3dgs-processor:gpu
         imagePullPolicy: Always
         
         resources:
@@ -197,7 +197,7 @@ Deploy serverless containers with Azure Files or Blobfuse2:
 RESOURCE_GROUP="<your-resource-group>"
 LOCATION="eastus"
 CONTAINER_NAME="3dgs-processor"
-IMAGE="youracr.azurecr.io/3dgs-processor:latest"
+IMAGE="youracr.azurecr.io/3dgs-processor:gpu"
 STORAGE_ACCOUNT="<your-storage-account>"
 STORAGE_KEY="<your-storage-key>"
 
@@ -235,7 +235,7 @@ properties:
   containers:
   - name: 3dgs-processor
     properties:
-      image: youracr.azurecr.io/3dgs-processor:latest
+      image: youracr.azurecr.io/3dgs-processor:gpu
       resources:
         requests:
           cpu: 8
@@ -598,7 +598,7 @@ docker run --rm \
   -e AZURE_STORAGE_SAS_TOKEN="$SAS_TOKEN" \
   -e BATCH_INPUT_PREFIX=scene_001/ \
   -e BACKEND=mock \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:cpu
 ```
 
 #### Docker with Managed Identity (Azure VM)
@@ -610,7 +610,7 @@ docker run --rm \
   -e AZURE_USE_MANAGED_IDENTITY=true \
   -e BATCH_INPUT_PREFIX=scene_001/ \
   -e BACKEND=gsplat \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 #### Azure Container Instances (Managed Identity)
@@ -619,7 +619,7 @@ docker run --rm \
 az container create \
   --resource-group mygroup \
   --name 3dgs-batch-job \
-  --image myregistry.azurecr.io/3dgs-processor:latest \
+  --image myregistry.azurecr.io/3dgs-processor:gpu \
   --assign-identity \
   --environment-variables \
     RUN_MODE=batch \
@@ -640,7 +640,7 @@ az container create \
 az container create \
   --resource-group mygroup \
   --name 3dgs-batch-job \
-  --image myregistry.azurecr.io/3dgs-processor:latest \
+  --image myregistry.azurecr.io/3dgs-processor:gpu \
   --environment-variables \
     RUN_MODE=batch \
     AZURE_STORAGE_ACCOUNT=my3dgsdata \
@@ -879,7 +879,7 @@ docker run -d --privileged \
   -e AZURE_BLOB_CONTAINER_OUTPUT=output \
   -e AZURE_BLOB_CONTAINER_PROCESSED=processed \
   -e AZURE_BLOB_CONTAINER_ERROR=error \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 #### 2. SAS Token (Time-Limited)
@@ -911,7 +911,7 @@ docker run -d --privileged \
   -e AZURE_STORAGE_ACCOUNT=$STORAGE_ACCOUNT \
   -e AZURE_STORAGE_SAS_TOKEN="se=2026-12-31&sp=racwdl&sv=2021-06-08&sr=c&sig=..." \
   -e AZURE_BLOB_CONTAINER_INPUT=input \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 **Best Practices:**
@@ -946,7 +946,7 @@ docker run -d --privileged \
   -v $HOME/.azure:/root/.azure:ro \
   -e AZURE_STORAGE_ACCOUNT=$STORAGE_ACCOUNT \
   -e AZURE_USE_AZURE_AD=true \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 **For CI/CD (Service Principal):**
@@ -961,7 +961,7 @@ docker run -d --privileged \
   -e AZURE_CLIENT_ID=$(echo $SP | jq -r .appId) \
   -e AZURE_CLIENT_SECRET=$(echo $SP | jq -r .password) \
   -e AZURE_STORAGE_ACCOUNT=$STORAGE_ACCOUNT \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 #### 4. Managed Identity (Production Azure Deployment) ⭐ Most Secure
@@ -977,7 +977,7 @@ docker run -d --privileged \
 az container create \
   --resource-group $RESOURCE_GROUP \
   --name 3dgs-processor \
-  --image youracr.azurecr.io/3dgs-processor:latest \
+  --image youracr.azurecr.io/3dgs-processor:gpu \
   --cpu 8 --memory 16 \
   --assign-identity [system] \
   --environment-variables \
@@ -1058,7 +1058,7 @@ docker run -d --privileged \
   -e OUTPUT_PATH=/mnt/blobfuse/output \
   -e PROCESSED_PATH=/mnt/blobfuse/processed \
   -e ERROR_PATH=/mnt/blobfuse/error \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 **Performance Tuning:**
@@ -1073,7 +1073,7 @@ docker run -d --privileged \
   -e BLOBFUSE_FILE_CACHE_TIMEOUT_SECS=120 \
   -e BLOBFUSE_ATTR_CACHE_TIMEOUT_SECS=60 \
   -e BLOBFUSE_ENABLE_STREAMING=true \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 **Cache Configuration:**
@@ -1096,7 +1096,7 @@ RESOURCE_GROUP="<your-resource-group>"
 LOCATION="eastus"
 CONTAINER_NAME="3dgs-processor"
 ACR_NAME="yourcontainerregistry"
-IMAGE="$ACR_NAME.azurecr.io/3dgs-processor:latest"
+IMAGE="$ACR_NAME.azurecr.io/3dgs-processor:gpu"
 STORAGE_ACCOUNT="3dgsprodstorage"
 
 # Create container with managed identity
@@ -1300,7 +1300,7 @@ docker run -d --privileged \
   -e ERROR_PATH=/mnt/blobfuse/error \
   -e BACKEND=gsplat \
   -e LOG_LEVEL=info \
-  youracr.azurecr.io/3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 
 # Monitor
 docker logs -f 3dgs-processor
@@ -1599,7 +1599,7 @@ docker run -d --privileged \
   -v $HOME/.azure:/root/.azure:ro \
   -e AZURE_STORAGE_ACCOUNT=$STORAGE_ACCOUNT \
   -e AZURE_USE_AZURE_AD=true \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 
 # Option 2: Service Principal
 docker run -d --privileged \
@@ -1607,7 +1607,7 @@ docker run -d --privileged \
   -e AZURE_CLIENT_ID=$CLIENT_ID \
   -e AZURE_CLIENT_SECRET=$CLIENT_SECRET \
   -e AZURE_STORAGE_ACCOUNT=$STORAGE_ACCOUNT \
-  3dgs-processor:latest
+  youracr.azurecr.io/3dgs-processor:gpu
 ```
 
 **Error:** `AuthorizationFailed` or `This request is not authorized to perform this operation`
@@ -1683,7 +1683,7 @@ docker run -d --privileged ...  # Required for FUSE
 **Solution:** Use AMD64 image:
 
 ```bash
-docker pull --platform linux/amd64 3dgs-processor:latest
+docker pull --platform linux/amd64 youracr.azurecr.io/3dgs-processor:cpu
 ```
 
 **Error:** Slow mount performance or timeouts

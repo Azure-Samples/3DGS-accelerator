@@ -403,7 +403,7 @@ flowchart TB
 
 ### Sub-steps
 
-1. **Backend Selection** — From `BACKEND` env var, or auto-detected from GPU platform (CUDA/HIP/Metal)
+1. **Backend Selection** — From `BACKEND` env var, or auto-detected from GPU platform (CUDA)
 2. **GPU Detection** — Validates GPU hardware compatibility
 3. **Training** — Executes `backend.train()` with frames + COLMAP poses + YAML hyperparameters
 

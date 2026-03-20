@@ -21,7 +21,7 @@ The 3DGS Video Processor supports multiple backend implementations:
 | Backend | Language | GPU Support | Status | Best For |
 |---------|----------|-------------|--------|----------|
 | **Mock** | Rust | N/A | ✅ Production | Testing, development |
-| **gaussian-splatting** | Python/CUDA | NVIDIA, AMD, Apple | ✅ Production | Metal GPUs, research |
+| **gaussian-splatting** | Python/CUDA | NVIDIA | ✅ Production | Research |
 | **gsplat** | Python/CUDA | NVIDIA | ✅ Production | CUDA GPUs, performance |
 | **3dgs-cpp** | C++ | NVIDIA, CPU | 🚧 Reference | Future C++ integration |
 
@@ -35,10 +35,10 @@ BACKEND=auto
 
 # Detected GPU → Recommended backend:
 # - NVIDIA CUDA → gsplat
-# - Apple Metal → gaussian-splatting
-# - AMD ROCm → gaussian-splatting
 # - No GPU → mock (testing only)
 ```
+<!-- # - Apple Metal → gaussian-splatting -->
+<!-- # - AMD ROCm → gaussian-splatting -->
 
 Force a specific backend:
 
@@ -89,12 +89,12 @@ Creates valid PLY/SPLAT files with minimal Gaussians for testing pipeline integr
 
 **Repository**: https://github.com/graphdeco-inria/gaussian-splatting
 
-The original implementation from INRIA. Best for Metal GPUs and research.
+The original implementation from INRIA. Best for research.
 
 ### Prerequisites
 
 - Python 3.8+
-- CUDA Toolkit 11.8+ (NVIDIA), Metal (Apple), or ROCm (AMD)
+- CUDA Toolkit 11.8+ (NVIDIA)
 - Git
 
 ### Installation
@@ -132,11 +132,16 @@ export GAUSSIAN_SPLATTING_BIN=$(which python)
 
 #### Option 3: Docker (Easiest)
 
-The provided Dockerfile bundles gaussian-splatting:
+The GPU target of the provided Dockerfile bundles gsplat (with CUDA PyTorch), which is the
+recommended replacement for the original gaussian-splatting backend. The original INRIA
+gaussian-splatting package is **not** bundled in the Docker image.
 
 ```bash
-docker build -t 3dgs-processor:latest .
-# gaussian-splatting included automatically
+# Build the GPU image (CUDA, amd64 only)
+docker build --target gpu -t 3dgs-processor:gpu .
+
+# Run with CUDA GPU
+docker run --gpus all -e BACKEND=gsplat 3dgs-processor:gpu
 ```
 
 ### Configuration
@@ -168,6 +173,7 @@ nvidia-smi
 python -c "import torch; print(torch.cuda.is_available())"
 ```
 
+<!--
 **Apple Metal**:
 ```bash
 # Verify Metal
@@ -180,6 +186,7 @@ python -c "import torch; print(torch.backends.mps.is_available())"
 rocm-smi
 python -c "import torch; print(torch.cuda.is_available())"
 ```
+-->
 
 ---
 
@@ -226,14 +233,18 @@ pytest tests/
 
 #### Option 3: Docker (Included)
 
-The provided Dockerfile bundles gsplat with PyTorch CPU:
+The provided Dockerfile has two build targets — `cpu` and `gpu` — both bundle gsplat:
 
 ```bash
-docker build -t 3dgs-processor:latest .
-# gsplat included automatically
+# CPU target: gsplat with CPU-only PyTorch (multi-arch: amd64 + arm64)
+# Default BACKEND=mock — use BACKEND=gsplat to override (slow on CPU)
+docker build --target cpu -t 3dgs-processor:cpu .
+docker run 3dgs-processor:cpu  # BACKEND=mock by default
 
-# For CUDA support, use NVIDIA container runtime:
-docker run --gpus all 3dgs-processor:latest
+# GPU target: gsplat with CUDA PyTorch (amd64 only)
+# Default BACKEND=gsplat — requires NVIDIA GPU at runtime
+docker build --target gpu -t 3dgs-processor:gpu .
+docker run --gpus all 3dgs-processor:gpu
 ```
 
 ### Configuration
@@ -322,7 +333,7 @@ BACKEND=auto
 
 # Force specific backend
 BACKEND=gsplat              # CUDA GPUs
-BACKEND=gaussian-splatting  # Metal/ROCm GPUs
+BACKEND=gaussian-splatting  # CUDA GPUs
 BACKEND=mock                # Testing only
 
 # Force CPU mode (testing)
@@ -336,10 +347,10 @@ The processor automatically selects backends based on detected hardware:
 ```
 Detect GPU:
 ├─ NVIDIA CUDA detected → gsplat (optimized for CUDA)
-├─ Apple Metal detected → gaussian-splatting (Metal support)
-├─ AMD ROCm detected → gaussian-splatting (ROCm support)
 └─ No GPU detected → mock (testing only, logs warning)
 ```
+<!-- ├─ Apple Metal detected → gaussian-splatting (Metal support) -->
+<!-- ├─ AMD ROCm detected → gaussian-splatting (ROCm support) -->
 
 View selection on startup:
 
@@ -354,7 +365,7 @@ docker logs 3dgs-processor | grep -i gpu
 ### Override Auto-Detection
 
 ```bash
-# Force gsplat even if Metal GPU detected
+# Force gsplat
 BACKEND=gsplat
 
 # Use mock backend for testing pipeline
@@ -387,8 +398,12 @@ docker inspect 3dgs-processor | grep BACKEND
 **Solution**:
 
 ```bash
-# Rebuild Docker image
-docker build -t 3dgs-processor:latest .
+# Rebuild Docker image — specify target explicitly
+# CPU image (multi-arch, BACKEND=mock default):
+docker build --target cpu -t 3dgs-processor:cpu .
+
+# GPU image (amd64, BACKEND=gsplat default):
+docker build --target gpu -t 3dgs-processor:gpu .
 
 # Or install in virtual environment
 pip install gsplat torch
@@ -405,13 +420,13 @@ pip install gsplat torch
 nvidia-smi
 python -c "import torch; print(torch.cuda.is_available())"
 
-# Use NVIDIA container runtime
-docker run --gpus all 3dgs-processor:latest
+# Use NVIDIA container runtime with the GPU image
+docker run --gpus all 3dgs-processor:gpu
 
-# Or use Metal/CPU backend
-BACKEND=gaussian-splatting  # For Metal GPUs
+# Or use CPU/mock backend (no GPU required)
 BACKEND=mock                # For testing without GPU
 ```
+<!-- BACKEND=gaussian-splatting  # For Metal GPUs -->
 
 ### Performance Issues
 
@@ -440,8 +455,8 @@ BACKEND=mock                # For testing without GPU
    # CUDA GPU → gsplat (fastest)
    BACKEND=gsplat
    
-   # Metal GPU → gaussian-splatting
-   BACKEND=gaussian-splatting
+   # CPU → mock (testing)
+   BACKEND=mock
    ```
 
 ### Backend Validation
@@ -473,38 +488,42 @@ test backend_validation::test_splat_export_validation ... ok
 
 ### Production Deployment
 
-Use the official multi-arch image:
+Build and run the appropriate image for your hardware:
 
 ```bash
-docker pull 3dgs-processor:latest
+# CPU image (multi-arch: amd64 + arm64) — use docker-build.sh or:
+docker build --target cpu -t 3dgs-processor:cpu .
+docker run 3dgs-processor:cpu  # BACKEND=mock by default
 
-# Auto-detects platform (arm64/amd64)
-# Auto-detects GPU (CUDA/Metal/ROCm)
+# GPU image (amd64 only) — requires NVIDIA GPU:
+docker build --target gpu -t 3dgs-processor:gpu .
+docker run --gpus all 3dgs-processor:gpu  # BACKEND=gsplat by default
 ```
 
 ### GPU Support
 
 **NVIDIA CUDA**:
 ```bash
+# GPU image — BACKEND=gsplat is the default
 docker run --gpus all \
-  -e BACKEND=gsplat \
-  3dgs-processor:latest
+  3dgs-processor:gpu
 ```
 
+<!--
 **Apple Metal** (Docker Desktop):
 ```bash
 docker run \
   -e BACKEND=gaussian-splatting \
-  3dgs-processor:latest
+  3dgs-processor:gpu
 # Note: Metal support via Docker is limited
 ```
+-->
 
 **CPU-Only**:
 ```bash
+# CPU image — BACKEND=mock is the default (no GPU required)
 docker run \
-  -e FORCE_CPU_BACKEND=1 \
-  3dgs-processor:latest
-# Uses mock backend for testing
+  3dgs-processor:cpu
 ```
 
 ### Verification
