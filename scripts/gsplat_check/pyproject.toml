@@ -1,0 +1,9 @@
+[project]
+name = "gsplat-check"
+version = "0.1.0"
+description = "CUDA/gsplat environment verification for the 3DGS video processor pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    "gsplat>=1.5.3",
+    "torch>=2.10.0",
+]

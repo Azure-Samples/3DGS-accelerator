@@ -436,6 +436,7 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the complete configuratio
 * [Deployment](docs/DEPLOYMENT.md) - Production deployment patterns and best practices
 * [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 * [PRD](docs/3dgs-video-processor-prd.md) - Product requirements specification
+* [gsplat Environment Check](scripts/gsplat_check/) - Python script to verify CUDA + gsplat functionality on a device
 
 ## Requirements
 
