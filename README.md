@@ -67,7 +67,7 @@ Output files are written to `./output/data/output/` (`my_scene.ply`, `my_scene.s
 If you prefer running via Docker (e.g., for production or Azure Blob Storage integration):
 
 <details>
-<summary>Local Docker Mode</summary>
+<summary>Local Docker Watch Mode</summary>
 
 ```bash
 # Create directory structure
@@ -103,14 +103,129 @@ ls output/scene_001/
 </details>
 
 <details>
-<summary>Azure Blob Storage Mode</summary>
+<summary>Docker Batch Mode (Azurite / Azure Blob Storage)</summary>
+
+Batch mode runs the processor as a one-shot container that downloads blobs from Azure Storage (or Azurite emulator), processes them, uploads outputs, and exits. No file watching, no FUSE mounts, no privileged mode needed.
+
+#### Prerequisites
+
+* Docker installed and running
+* [uv](https://docs.astral.sh/uv/) and Python 3 (for the Azurite helper script)
+* Test videos downloaded (`./scripts/e2e/01-download-testdata.sh`)
+
+#### Step 1: Build the CPU image
 
 ```bash
-docker run -d --privileged \
-  --name 3dgs-processor \
-  -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=..." \
-  -e AZURE_CONTAINER_NAME=3dgs-input \
+docker build --target cpu -t 3dgs-processor:cpu .
+```
+
+#### Step 2: Start Azurite (Azure Storage emulator)
+
+```bash
+docker network create 3dgs-e2e-net
+
+docker run -d --rm --name azurite-e2e \
+  --network 3dgs-e2e-net \
+  -p 10000:10000 \
+  mcr.microsoft.com/azure-storage/azurite \
+  azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck
+
+# Wait for Azurite to be ready
+curl -s http://127.0.0.1:10000/ > /dev/null && echo "Azurite ready"
+```
+
+#### Step 3: Upload test videos and generate a SAS token
+
+```bash
+# Create a Python venv and install dependencies (one-time setup)
+uv venv output/.e2e-venv
+source output/.e2e-venv/bin/activate
+uv pip install azure-storage-blob
+
+# Create containers (input, output, processed, error) and upload videos
+python3 scripts/e2e/azurite_helper.py setup testdata/south_building_videos "my_scene/"
+
+# Generate a SAS token for the processor
+SAS_TOKEN=$(python3 scripts/e2e/azurite_helper.py sas)
+```
+
+#### Step 4: Run the processor container in batch mode
+
+```bash
+docker run --rm --name 3dgs-e2e-batch \
+  --network 3dgs-e2e-net \
+  -v $(pwd)/container-test/config.yaml:/config/config.yaml:ro \
+  -e RUN_MODE=batch \
+  -e AZURE_STORAGE_ACCOUNT=devstoreaccount1 \
+  -e AZURE_STORAGE_ENDPOINT=http://azurite-e2e:10000/devstoreaccount1 \
+  -e "AZURE_STORAGE_SAS_TOKEN=$SAS_TOKEN" \
+  -e BATCH_INPUT_PREFIX=my_scene/ \
+  -e BACKEND=mock \
+  -e FORCE_CPU_BACKEND=1 \
+  -e COLMAP_USE_CPU=1 \
+  -e COLMAP_MATCHER=sequential \
+  -e COLMAP_MAX_NUM_FEATURES=2048 \
+  -e FRAME_RATE=2 \
+  -e MIN_VIDEO_FRAMES=5 \
+  -e MIN_VIDEO_DURATION=0.5 \
+  -e MIN_RECONSTRUCTION_POINTS=100 \
+  -e RECONSTRUCTION_BACKEND=colmap \
+  -e MAX_RETRIES=1 \
+  -e LOG_LEVEL=info \
+  -e TEMP_PATH=/tmp/3dgs-work \
+  3dgs-processor:cpu
+```
+
+The container will: download videos from Azurite → extract frames (FFmpeg) → reconstruct with COLMAP → mock-train → export PLY + SPLAT → upload outputs → move inputs to `processed` → exit 0.
+
+#### Step 5: Verify outputs
+
+```bash
+python3 scripts/e2e/azurite_helper.py verify "my_scene/"
+```
+
+Expected:
+```
+✅ PLY:          my_scene/my_scene.ply (42443 bytes)
+✅ SPLAT:        my_scene/my_scene.splat (32000 bytes)
+✅ manifest:     present
+✅ processed:    3 input video(s) archived
+✅ input:        cleaned (all blobs moved)
+✅ error:        empty (no failures)
+```
+
+#### Step 6: Cleanup
+
+```bash
+docker stop azurite-e2e
+docker network rm 3dgs-e2e-net
+deactivate  # exit Python venv
+```
+
+#### Fully automated alternative
+
+The E2E script runs all of the above automatically:
+
+```bash
+./scripts/e2e/04-run-e2e.sh --mode batch
+```
+
+#### Using real Azure Blob Storage (production)
+
+Replace Azurite with your Azure account. Authentication options (in priority order):
+
+1. **SAS Token**: `-e AZURE_STORAGE_SAS_TOKEN="?sv=2022-..."`
+2. **Managed Identity**: `-e AZURE_USE_MANAGED_IDENTITY=true` (Azure VMs/AKS)
+3. **Azure CLI**: Default — requires `az login` on the host
+
+```bash
+docker run --rm \
+  -e RUN_MODE=batch \
+  -e AZURE_STORAGE_ACCOUNT=youraccount \
+  -e "AZURE_STORAGE_SAS_TOKEN=?sv=2022-..." \
+  -e BATCH_INPUT_PREFIX=scene_001/ \
   -e BACKEND=gsplat \
+  --gpus all \
   youracr.azurecr.io/3dgs-processor:gpu
 ```
 
