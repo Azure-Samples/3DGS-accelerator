@@ -160,6 +160,14 @@ def check_gsplat() -> dict:
         import torch  # noqa: E402
         from gsplat import rasterization  # noqa: E402
 
+        # If CUDA is not available/usable, skip kernel probing to avoid
+        # redundant low-level CUDA errors and report a clear status instead.
+        if not torch.cuda.is_available():
+            info["kernel_error"] = (
+                "skipped: CUDA unavailable or unusable "
+                "(torch.cuda.is_available() is False)"
+            )
+            return info
         N = 8  # tiny number of Gaussians
         means = torch.randn(N, 3, device="cuda")
         quats = torch.randn(N, 4, device="cuda")
@@ -210,7 +218,8 @@ def main() -> int:
 
     print(f"  {'Platform':<16}: {gpu['platform']}")
     print(f"  {'Device':<16}: {gpu['device'] or 'n/a'}")
-    print(f"  {'VRAM':<16}: {gpu['vram_gb'] or 'n/a'} GB")
+    vram_detail = f"{gpu['vram_gb']} GB" if gpu["vram_gb"] else "n/a"
+    print(f"  {'VRAM':<16}: {vram_detail}")
     print(f"  {'PyTorch':<16}: {gpu['torch_version'] or 'not installed'}")
     print(f"  {'CUDA runtime':<16}: {gpu['cuda_version'] or 'n/a'}")
     print(f"  {'Usable':<16}: {'yes' if gpu['usable'] else 'no'}")
