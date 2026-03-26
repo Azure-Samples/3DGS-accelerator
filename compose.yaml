@@ -10,6 +10,21 @@ version: '3.8'
 # mkdir -p ./output/data/input/my_scene && cp testdata/sample_scene/view*.mp4 ./output/data/input/my_scene 
 
 services:
+  # Azure Blob Storage emulator for local development and E2E testing
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: azurite
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck
+    ports:
+      - "10000:10000"
+    volumes:
+      - azurite-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
   # CPU-only variant (default) — uses apt-installed COLMAP, CPU PyTorch
   3dgs-processor:
     image: 3dgs-processor:latest
@@ -79,3 +94,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  azurite-data:
