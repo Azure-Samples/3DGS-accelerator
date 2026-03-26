@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./output/data:/data
-      - ./container-test/config.yaml:/app/config.yaml:ro
+      - ./container-test/config.1.yaml:/app/config.yaml:ro
       - ./output/tmp:/tmp/3dgs-work
     environment:
       CONFIG_PATH: /app/config.yaml
@@ -56,7 +56,7 @@ services:
               capabilities: [gpu]
     volumes:
       - ./output/data:/data
-      - ./container-test/config.yaml:/app/config.yaml:ro
+      - ./container-test/config.1.yaml:/app/config.yaml:ro
       - ./output/tmp:/tmp/3dgs-work
     environment:
       CONFIG_PATH: /app/config.yaml
