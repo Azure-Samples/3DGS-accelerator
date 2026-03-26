@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "useGpu": {
+      "value": "${USE_GPU=true}"
+    },
+    "gpuProfileType": {
+      "value": "${GPU_PROFILE_TYPE=Consumption-GPU-NC8as-T4}"
+    },
+    "useStorageKeys": {
+      "value": "${USE_STORAGE_KEYS=false}"
+    },
+    "processorBackend": {
+      "value": "${PROCESSOR_BACKEND=gsplat}"
+    },
+    "includeRbac": {
+      "value": "${INCLUDE_RBAC=true}"
+    },
+    "deployerPrincipalId": {
+      "value": "${DEPLOYER_PRINCIPAL_ID=}"
+    },
+    "storageExtraTags": {
+      "value": { "SecurityControl": "Ignore" }
+    }
+  }
+}

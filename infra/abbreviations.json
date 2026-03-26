@@ -1,0 +1,10 @@
+{
+  "appContainerAppsEnvironment": "cae",
+  "appContainerApps": "ca",
+  "appJobs": "caj",
+  "containerRegistry": "cr",
+  "managedIdentity": "id",
+  "operationalInsightsWorkspace": "log",
+  "resourceGroup": "rg-",
+  "storageAccount": "st"
+}

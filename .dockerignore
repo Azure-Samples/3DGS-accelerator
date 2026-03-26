@@ -50,7 +50,6 @@ flycheck*/
 
 # Docker files (don't need these in the build context)
 .dockerignore
-Dockerfile
 docker-compose*.yml
 
 # Scripts not needed in container
@@ -59,6 +58,8 @@ scripts/download-*.sh
 scripts/generate-*.sh
 scripts/e2e-*.sh
 scripts/run-*.sh
+scripts/gsplat_check/
+scripts/e2e/
 
 # Python cache
 __pycache__/
@@ -66,6 +67,19 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+
+# Python virtual environments
+.venv/
+venv/
+**/.venv/
+**/venv/
+.e2e-venv/
+
+# Output and infra directories
+output/
+infra/
+.azure/
+container-test/
 
 # IDE and workspace files
 .copilot/

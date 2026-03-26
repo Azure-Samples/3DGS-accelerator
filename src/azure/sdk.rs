@@ -14,7 +14,10 @@ use azure_core::{
     credentials::TokenCredential,
     http::RequestContent,
 };
-use azure_identity::{DeveloperToolsCredential, ManagedIdentityCredential};
+use azure_identity::{
+    DeveloperToolsCredential, ManagedIdentityCredential, ManagedIdentityCredentialOptions,
+    UserAssignedId,
+};
 use azure_storage_blob::{
     models::BlobContainerClientListBlobsOptions,
     BlobClient, BlobContainerClient,
@@ -101,7 +104,15 @@ impl BlobStorageClient {
                 (endpoint, None, "sas_token")
             } else if use_msi {
                 info!("Using Managed Identity credential for Azure Blob Storage SDK");
-                let cred = ManagedIdentityCredential::new(None)
+                // Support user-assigned managed identity via AZURE_CLIENT_ID
+                let mi_options = std::env::var("AZURE_CLIENT_ID").ok().map(|client_id| {
+                    info!(client_id = %client_id, "Using user-assigned managed identity");
+                    ManagedIdentityCredentialOptions {
+                        user_assigned_id: Some(UserAssignedId::ClientId(client_id)),
+                        ..Default::default()
+                    }
+                });
+                let cred = ManagedIdentityCredential::new(mi_options)
                     .context("Failed to create ManagedIdentityCredential")?;
                 (base_endpoint, Some(cred), "managed_identity")
             } else {

@@ -36,3 +36,6 @@ output
 # better test files from COLMAP
 testdata/south**
 .e2e-venv
+
+# Azure Developer CLI
+.azure/

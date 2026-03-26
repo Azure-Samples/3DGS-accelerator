@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "managedIdentityPrincipalId": {
+      "value": "${MANAGED_IDENTITY_PRINCIPAL_ID}"
+    },
+    "containerRegistryName": {
+      "value": "${AZURE_CONTAINER_REGISTRY_NAME}"
+    },
+    "storageAccountName": {
+      "value": "${AZURE_STORAGE_ACCOUNT_NAME}"
+    }
+  }
+}

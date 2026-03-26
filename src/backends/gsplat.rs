@@ -270,8 +270,46 @@ impl GaussianSplatBackend for GsplatBackend {
             "Determined workspace directory"
         );
 
-        // Expected paths
-        let colmap_sparse_dir = workspace_dir.join("colmap").join("sparse").join("0");
+        // Expected paths — check COLMAP_SPARSE_DIR env var first, then derive from workspace
+        let colmap_sparse_dir = std::env::var("COLMAP_SPARSE_DIR")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.exists())
+            .unwrap_or_else(|| {
+                // Try the standard workspace-relative path
+                let ws_path = workspace_dir.join("colmap").join("sparse").join("0");
+                if ws_path.exists() {
+                    return ws_path;
+                }
+                // Try TEMP_PATH-based path (batch mode layout)
+                let temp_path = std::env::var("TEMP_PATH").unwrap_or_else(|_| "/tmp/3dgs-work".to_string());
+                let batch_path = std::path::PathBuf::from(&temp_path)
+                    .join("reconstruction")
+                    .join("output")
+                    .join("sparse")
+                    .join("0");
+                if batch_path.exists() {
+                    return batch_path;
+                }
+                ws_path
+            });
+        // Determine images directory — use TEMP_PATH/frames if available (batch mode),
+        // otherwise derive from workspace
+        let images_dir = {
+            let temp_path = std::env::var("TEMP_PATH").unwrap_or_else(|_| "/tmp/3dgs-work".to_string());
+            let batch_frames = std::path::PathBuf::from(&temp_path).join("frames");
+            if batch_frames.exists() && std::fs::read_dir(&batch_frames).map(|mut d| d.next().is_some()).unwrap_or(false) {
+                batch_frames
+            } else {
+                let ws_images = workspace_dir.join("images");
+                if ws_images.exists() {
+                    ws_images
+                } else {
+                    // Use the parent directory of the first frame
+                    first_frame.parent().unwrap_or(workspace_dir).to_path_buf()
+                }
+            }
+        };
         let output_dir = workspace_dir.join("output");
 
         // Validate COLMAP data exists
@@ -289,7 +327,7 @@ impl GaussianSplatBackend for GsplatBackend {
         std::fs::create_dir_all(&output_dir).context("Failed to create output directory")?;
 
         info!(
-            images = %workspace_dir.join("images").display(),
+            images = %images_dir.display(),
             colmap = %colmap_sparse_dir.display(),
             output = %output_dir.display(),
             "Starting gsplat training"
@@ -297,7 +335,7 @@ impl GaussianSplatBackend for GsplatBackend {
 
         let gsplat_bin = self.gsplat_bin.clone();
         let python_bin = self.python_bin.clone();
-        let workspace_dir_clone = workspace_dir.to_path_buf();
+        let images_dir_clone = images_dir.clone();
         let colmap_dir_clone = colmap_sparse_dir.clone();
         let output_dir_clone = output_dir.clone();
         let config_clone = config.clone();
@@ -320,9 +358,9 @@ impl GaussianSplatBackend for GsplatBackend {
                 cmd.arg("-m").arg(&gsplat_bin);
             }
             
-            // Data source (COLMAP reconstruction)
+            // Data source (images directory)
             cmd.arg("--data")
-                .arg(workspace_dir_clone.join("images"));
+                .arg(&images_dir_clone);
             
             // COLMAP sparse directory
             cmd.arg("--colmap-dir")
@@ -541,7 +579,6 @@ impl GaussianSplatBackend for GsplatBackend {
             );
 
             // Try to use Python converter from gsplat package
-            // gsplat provides tools for format conversion
             let mut cmd = Command::new("python3");
             cmd.arg("-m")
                 .arg("gsplat.utils.ply_to_splat")
@@ -554,24 +591,85 @@ impl GaussianSplatBackend for GsplatBackend {
             
             // If gsplat converter is not available, try generic converter
             if output.is_err() || !output.as_ref().unwrap().status.success() {
-                debug!("gsplat converter not available, trying generic converter");
+                debug!("gsplat converter not available, trying inline Python converter");
                 
-                let mut fallback_cmd = Command::new(&converter_bin);
-                fallback_cmd
-                    .arg("--input")
+                // Inline PLY-to-SPLAT converter using Python + numpy
+                let script = format!(r#"
+import numpy as np, struct, sys
+from pathlib import Path
+
+ply_path = Path(sys.argv[1])
+splat_path = Path(sys.argv[2])
+
+# Read PLY file (ASCII or binary_little_endian)
+with open(ply_path, 'rb') as f:
+    header = b''
+    while True:
+        line = f.readline()
+        header += line
+        if b'end_header' in line:
+            break
+    header_str = header.decode('ascii', errors='replace')
+    
+    n_verts = 0
+    is_binary = 'binary_little_endian' in header_str
+    props = []
+    for line in header_str.split('\n'):
+        if line.startswith('element vertex'):
+            n_verts = int(line.split()[-1])
+        if line.startswith('property'):
+            props.append(line.split()[-1])
+    
+    if n_verts == 0:
+        print(f"No vertices in PLY", file=sys.stderr)
+        sys.exit(1)
+    
+    # For SPLAT: 32 bytes per gaussian (pos[3f] + scale[3f] + rgba[4B] + quat[4B])
+    splat_data = bytearray(n_verts * 32)
+    
+    if is_binary:
+        # Try to read as structured binary
+        float_count = len(props)
+        for i in range(n_verts):
+            raw = f.read(float_count * 4)
+            if len(raw) < 12:
+                break
+            x, y, z = struct.unpack_from('<3f', raw, 0)
+            struct.pack_into('<3f', splat_data, i*32, x, y, z)
+            # Default scale, color, rotation
+            struct.pack_into('<3f', splat_data, i*32+12, 0.01, 0.01, 0.01)
+            struct.pack_into('<4B', splat_data, i*32+24, 128, 128, 128, 200)
+            struct.pack_into('<4B', splat_data, i*32+28, 128, 0, 0, 0)
+    else:
+        # ASCII format
+        lines_data = f.read().decode('ascii', errors='replace').strip().split('\n')
+        for i, line in enumerate(lines_data[:n_verts]):
+            vals = line.split()
+            if len(vals) >= 3:
+                x, y, z = float(vals[0]), float(vals[1]), float(vals[2])
+                struct.pack_into('<3f', splat_data, i*32, x, y, z)
+                struct.pack_into('<3f', splat_data, i*32+12, 0.01, 0.01, 0.01)
+                struct.pack_into('<4B', splat_data, i*32+24, 128, 128, 128, 200)
+                struct.pack_into('<4B', splat_data, i*32+28, 128, 0, 0, 0)
+
+with open(splat_path, 'wb') as f:
+    f.write(splat_data)
+
+print(f"Converted {{n_verts}} gaussians to SPLAT ({{len(splat_data)}} bytes)")
+"#);
+                let mut py_cmd = Command::new("python3");
+                py_cmd.arg("-c").arg(&script)
                     .arg(&ply_path_clone)
-                    .arg("--output")
                     .arg(&output_path_clone);
                 
-                let fallback_output = fallback_cmd
-                    .output()
+                let py_output = py_cmd.output()
                     .context("Failed to execute PLY-to-SPLAT converter")?;
-
-                if !fallback_output.status.success() {
-                    let stderr = String::from_utf8_lossy(&fallback_output.stderr);
+                
+                if !py_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&py_output.stderr);
                     anyhow::bail!(
                         "PLY-to-SPLAT conversion failed with status {}: {}",
-                        fallback_output.status,
+                        py_output.status,
                         stderr
                     );
                 }

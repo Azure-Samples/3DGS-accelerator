@@ -1,0 +1,11 @@
+name: 3dgs-processor
+metadata:
+  template: 3dgs-processor@0.0.1
+hooks:
+  preprovision:
+    shell: sh
+    run: ./infra/scripts/hooks/preprovision.sh
+    continueOnError: true
+  postprovision:
+    shell: sh
+    run: ./infra/scripts/hooks/postprovision.sh
