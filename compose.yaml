@@ -21,9 +21,9 @@ services:
       - azurite-data:/data
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:10000/"]
-      interval: 2s
-      timeout: 3s
-      retries: 15
+      interval: 15s
+      timeout: 5s
+      retries: 20
       start_period: 2s
     logging:
       driver: json-file
