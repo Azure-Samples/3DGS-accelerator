@@ -19,6 +19,12 @@ services:
       - "10000:10000"
     volumes:
       - azurite-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:10000/"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 2s
     logging:
       driver: json-file
       options:
@@ -30,6 +36,9 @@ services:
     image: 3dgs-processor:latest
     container_name: 3dgs-processor
     restart: unless-stopped
+    depends_on:
+      azurite:
+        condition: service_healthy
     volumes:
       - ./output/data:/data
       - ./container-test/config.1.yaml:/app/config.yaml:ro
@@ -62,6 +71,9 @@ services:
     container_name: 3dgs-processor-gpu
     profiles: ["gpu"]
     restart: unless-stopped
+    depends_on:
+      azurite:
+        condition: service_healthy
     deploy:
       resources:
         reservations:
