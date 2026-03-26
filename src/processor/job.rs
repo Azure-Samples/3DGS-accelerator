@@ -438,18 +438,18 @@ async fn execute_job_internal(
             reconstruction_backend.name()
         );
         
-        let reconstruction_work_dir = temp_folder.join("reconstruction");
+        let reconstruction_work_dir = temp_folder.join("colmap");
         std::fs::create_dir_all(&reconstruction_work_dir).context("Failed to create reconstruction work directory")?;
 
         // Collect all frame paths from all videos
-        let image_dir = temp_folder.join("frames");
+        let image_dir = temp_folder.join("images");
         std::fs::create_dir_all(&image_dir).context("Failed to create frames directory")?;
 
         // Copy or link frames to single directory for reconstruction
         copy_frames_to_colmap_dir(&frame_sets, &image_dir)
             .context("Failed to prepare frames for reconstruction")?;
 
-        let output_dir = reconstruction_work_dir.join("output");
+        let output_dir = reconstruction_work_dir.clone();
 
         // Build reconstruction config — honour COLMAP_MATCHER env var
         let colmap_matcher = std::env::var("COLMAP_MATCHER")
@@ -490,18 +490,21 @@ async fn execute_job_internal(
         reconstruction_output.output_dir
     } else {
         info!(job_id = %job_id, "Step 5: Skipping reconstruction (already completed)");
-        progress.completed_stages().colmap_sparse_path.clone().unwrap_or_else(|| temp_folder.join("reconstruction/output"))
+        progress.completed_stages().colmap_sparse_path.clone().unwrap_or_else(|| temp_folder.join("colmap"))
     };
 
     // Step 6: Train 3DGS model
     let model_output = if progress.stage() == ProcessingStage::Training {
         info!(job_id = %job_id, "Step 6: Training 3DGS model");
 
-        // Collect frame paths for training
-        let frame_paths: Vec<PathBuf> = frame_sets
-            .iter()
-            .flat_map(|fs| fs.frame_paths.clone())
+        // Read frame paths from image_dir so gsplat backend derives the correct
+        // workspace (image_dir.parent() = temp_folder) and finds colmap/sparse/0
+        let mut frame_paths: Vec<PathBuf> = std::fs::read_dir(&temp_folder.join("images"))
+            .context("Failed to read image dir for training")?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("jpg"))
             .collect();
+        frame_paths.sort();
 
         let frame_path_refs: Vec<&Path> = frame_paths.iter().map(|p| p.as_path()).collect();
 
@@ -535,10 +538,12 @@ async fn execute_job_internal(
             cached_model.clone()
         } else {
             info!(job_id = %job_id, "No valid cached model found, re-training");
-            let frame_paths: Vec<PathBuf> = frame_sets
-                .iter()
-                .flat_map(|fs| fs.frame_paths.clone())
+            let mut frame_paths: Vec<PathBuf> = std::fs::read_dir(&temp_folder.join("images"))
+                .context("Failed to read image dir for re-training")?
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("jpg"))
                 .collect();
+            frame_paths.sort();
             let frame_path_refs: Vec<&Path> = frame_paths.iter().map(|p| p.as_path()).collect();
             let output = backend.train(&frame_path_refs, training_config).await?;
             progress.set_model_output(output.clone())?;

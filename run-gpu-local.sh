@@ -45,13 +45,13 @@ echo "✓ GPU image built successfully"
 # Step 4: Prepare config
 echo ""
 echo "[4/5] Setting up configuration..."
-if [ ! -f "container-test/config.1.yaml" ]; then
-    cp config.example.yaml container-test/config.1.yaml
-    echo "✓ Config file created at container-test/config.1.yaml"
+if [ ! -f "container-test/confg.yaml" ]; then
+    cp config.example.yaml container-test/confg.yaml
+    echo "✓ Config file created at container-test/confg.yaml"
 else
     echo "✓ Config file already exists"
 fi
-echo "   (Edit container-test/config.1.yaml to adjust training parameters)"
+echo "   (Edit container-test/confg.yaml to adjust training parameters)"
 
 # Step 5: Start container
 echo ""
