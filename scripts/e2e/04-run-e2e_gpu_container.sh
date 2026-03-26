@@ -19,8 +19,10 @@
 #
 # Usage:
 #   ./scripts/e2e/04-run-e2e_gpu_container.sh
-#   ./scripts/e2e/04-run-e2e_gpu_container.sh --skip-build    # reuse existing image
-#   ./scripts/e2e/04-run-e2e_gpu_container.sh --timeout 600   # custom timeout
+#   ./scripts/e2e/04-run-e2e_gpu_container.sh --skip-build       # reuse existing image
+#   ./scripts/e2e/04-run-e2e_gpu_container.sh --keep-azurite     # leave Azurite running after exit
+#   ./scripts/e2e/04-run-e2e_gpu_container.sh --reuse-azurite    # use existing Azurite from prior run
+#   ./scripts/e2e/04-run-e2e_gpu_container.sh --timeout 600      # custom timeout
 
 set -euo pipefail
 
@@ -28,6 +30,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/../.."
 
 SKIP_BUILD=false
+KEEP_AZURITE=false
+REUSE_AZURITE=false
 TIMEOUT=900
 SCENE_NAME="south_building"
 BATCH_PREFIX="${SCENE_NAME}/"
@@ -41,6 +45,8 @@ VIDEO_SRC="$PROJECT_ROOT/testdata/south_building_videos"
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=true ;;
+    --keep-azurite) KEEP_AZURITE=true ;;
+    --reuse-azurite) REUSE_AZURITE=true ;;
     --timeout) TIMEOUT="$2"; shift ;;
   esac
 done
@@ -60,9 +66,13 @@ cleanup() {
   echo "Cleaning up..."
   docker stop "$PROCESSOR_CONTAINER" 2>/dev/null || true
   docker rm "$PROCESSOR_CONTAINER" 2>/dev/null || true
-  docker stop "$AZURITE_CONTAINER" 2>/dev/null || true
-  docker rm "$AZURITE_CONTAINER" 2>/dev/null || true
-  docker network rm "$NETWORK_NAME" 2>/dev/null || true
+  if [ "$KEEP_AZURITE" = true ] || [ "$REUSE_AZURITE" = true ]; then
+    echo "  Keeping Azurite running (--keep-azurite / --reuse-azurite)"
+  else
+    docker stop "$AZURITE_CONTAINER" 2>/dev/null || true
+    docker rm "$AZURITE_CONTAINER" 2>/dev/null || true
+    docker network rm "$NETWORK_NAME" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
@@ -89,19 +99,34 @@ echo ""
 # ── Step 3: Create Docker network + start Azurite ───────────────────────────
 echo "[3/7] Starting Azurite..."
 
-# Clean up any prior run
-docker stop "$AZURITE_CONTAINER" 2>/dev/null || true
-docker rm "$AZURITE_CONTAINER" 2>/dev/null || true
-docker network rm "$NETWORK_NAME" 2>/dev/null || true
+# Check if Azurite is already running (--reuse-azurite)
+AZURITE_RUNNING=false
+if docker ps --format '{{.Names}}' | grep -q "^${AZURITE_CONTAINER}$"; then
+  AZURITE_RUNNING=true
+fi
 
-docker network create "$NETWORK_NAME"
+if [ "$REUSE_AZURITE" = true ] && [ "$AZURITE_RUNNING" = true ]; then
+  echo "  Reusing existing Azurite container: $AZURITE_CONTAINER"
+  # Ensure the network exists and Azurite is on it
+  docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME"
+  docker network connect "$NETWORK_NAME" "$AZURITE_CONTAINER" 2>/dev/null || true
+else
+  # Clean up any prior run (unless reusing)
+  if [ "$AZURITE_RUNNING" = true ]; then
+    docker stop "$AZURITE_CONTAINER" 2>/dev/null || true
+    docker rm "$AZURITE_CONTAINER" 2>/dev/null || true
+  fi
+  docker network rm "$NETWORK_NAME" 2>/dev/null || true
 
-docker run -d --rm \
-  --name "$AZURITE_CONTAINER" \
-  --network "$NETWORK_NAME" \
-  -p "${AZURITE_PORT}:10000" \
-  mcr.microsoft.com/azure-storage/azurite \
-  azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck
+  docker network create "$NETWORK_NAME"
+
+  docker run -d \
+    --name "$AZURITE_CONTAINER" \
+    --network "$NETWORK_NAME" \
+    -p "${AZURITE_PORT}:10000" \
+    mcr.microsoft.com/azure-storage/azurite \
+    azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck
+fi
 
 # Wait for Azurite to be ready
 echo "  Waiting for Azurite..."
