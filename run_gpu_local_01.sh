@@ -40,10 +40,10 @@ echo "  GPU image built"
 # Step 4: Prepare config
 echo ""
 echo "[4/5] Setting up configuration..."
-if [ ! -f "container-test/config.1.yaml" ]; then
-    cp config.example.yaml container-test/config.1.yaml
+if [ ! -f "container-test/confg.yaml" ]; then
+    cp config.example.yaml container-test/confg.yaml
 fi
-echo "  Config: container-test/config.1.yaml"
+echo "  Config: container-test/confg.yaml"
 
 # Step 5: Run in batch mode
 echo ""

@@ -173,7 +173,7 @@ CONTAINER_EXIT=0
 docker run --rm --gpus all \
   --name "$PROCESSOR_CONTAINER" \
   --network "$NETWORK_NAME" \
-  -v "$PROJECT_ROOT/container-test/config.1.yaml:/app/config.yaml:ro" \
+  -v "$PROJECT_ROOT/container-test/confg.yaml:/app/config.yaml:ro" \
   -e CONFIG_PATH=/app/config.yaml \
   -e INPUT_PATH=/data/input \
   -e OUTPUT_PATH=/data/output \

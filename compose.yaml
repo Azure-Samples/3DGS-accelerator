@@ -41,7 +41,7 @@ services:
         condition: service_healthy
     volumes:
       - ./output/data:/data
-      - ./container-test/config.1.yaml:/app/config.yaml:ro
+      - ./container-test/confg.yaml:/app/config.yaml:ro
       - ./output/tmp:/tmp/3dgs-work
     environment:
       CONFIG_PATH: /app/config.yaml
@@ -83,7 +83,7 @@ services:
               capabilities: [gpu]
     volumes:
       - ./output/data:/data
-      - ./container-test/config.1.yaml:/app/config.yaml:ro
+      - ./container-test/confg.yaml:/app/config.yaml:ro
       - ./output/tmp:/tmp/3dgs-work
     environment:
       CONFIG_PATH: /app/config.yaml

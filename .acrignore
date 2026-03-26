@@ -1,0 +1,16 @@
+target/
+testdata/
+tests/
+examples/
+container-test/
+output/
+.git/
+.github/
+.vscode/
+.idea/
+.copilot/
+.copilot-tracking/
+docs/
+.venv/
+.cache/
+__pycache__/
