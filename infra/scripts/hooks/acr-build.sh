@@ -62,12 +62,21 @@ echo "   Context size: $CONTEXT_SIZE"
 echo ""
 
 # Build the GPU target with T4-optimized CUDA architectures
+# ACR Tasks automatically caches layers from previous builds in the same registry.
+# BUILDKIT_INLINE_CACHE=1 embeds cache metadata in the pushed image so subsequent
+# builds can reuse unchanged layers (base images, apt, pip, COLMAP compilation).
+# Only layers after a changed COPY/ADD instruction are rebuilt.
+CACHE_IMAGE="${ACR_ENDPOINT}/${IMAGE_REPO}:gpu-latest"
+echo "🔄 Layer cache: ACR will reuse unchanged layers from previous builds"
+echo ""
+
 az acr build \
   --registry "$ACR_NAME" \
   --image "${IMAGE_REPO}:${IMAGE_TAG}" \
   --image "${IMAGE_REPO}:gpu-latest" \
   --file Dockerfile \
   --build-arg CUDA_ARCHITECTURES="75" \
+  --build-arg BUILDKIT_INLINE_CACHE=1 \
   --target gpu \
   --platform linux/amd64 \
   --timeout 3600 \
