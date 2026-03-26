@@ -9,6 +9,7 @@ pub use redact::{check_for_credentials, redact_credentials};
 
 use anyhow::{Context, Result};
 use std::fmt;
+use std::io::IsTerminal;
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -36,6 +37,9 @@ pub fn init() -> Result<()> {
 
     let filter = EnvFilter::try_new(&log_level).context("Invalid log level")?;
 
+    // Disable ANSI color codes when stdout is not a terminal (e.g., containers, log aggregators)
+    let use_ansi = std::io::stdout().is_terminal();
+
     tracing_subscriber::registry()
         .with(filter)
         .with(
@@ -45,6 +49,7 @@ pub fn init() -> Result<()> {
                 .with_file(false)
                 .with_line_number(false)
                 .with_timer(BracketedUtcTime)
+                .with_ansi(use_ansi)
                 .compact(),
         )
         .init();
