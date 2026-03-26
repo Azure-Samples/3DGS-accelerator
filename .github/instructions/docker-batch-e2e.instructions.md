@@ -194,9 +194,6 @@ Mount the project's `container-test/config.yaml` (a **file**, not a directory):
 -v /absolute/path/to/container-test/config.yaml:/config/config.yaml:ro
 ```
 
-⚠️ **Pitfall:** `container-test/config.1.yaml` is a directory (created by a prior bad mount),
-not a file. Always use `container-test/config.yaml`.
-
 ## Batch mode vs Watch mode (in Docker)
 
 | Aspect | Batch Mode | Watch Mode |

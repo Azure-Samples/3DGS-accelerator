@@ -1,32 +1,39 @@
 #!/usr/bin/env bash
-# deploy-job.sh — Build the container image on ACR and deploy to the Container Apps Job.
+# deploy-job.sh — Build the container image and deploy to the Container Apps Job.
 #
-# This replaces 'azd deploy' for this project. It:
-#   1. Builds the GPU Docker image via ACR Tasks (no local Docker required)
-#   2. Deploys the image by updating the Container Apps Job
+# Two build modes:
+#   --local   Build locally with Docker + push to ACR (fast incremental rebuilds)
+#   (default) Build remotely via ACR Tasks (no local Docker required, ~35 min)
 #
 # Usage:
-#   ./infra/scripts/deploy-job.sh            # build + deploy
-#   ./infra/scripts/deploy-job.sh --skip-build   # deploy existing image (skip ACR build)
+#   ./infra/scripts/deploy-job.sh                # remote ACR Tasks build + deploy
+#   ./infra/scripts/deploy-job.sh --local        # local Docker build + push + deploy
+#   ./infra/scripts/deploy-job.sh --skip-build   # deploy existing image (no build)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 SKIP_BUILD=false
+LOCAL_BUILD=false
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=true ;;
+    --local) LOCAL_BUILD=true ;;
   esac
 done
 
 cd "$ROOT_DIR"
 
-# ── Step 1: Build image on ACR ───────────────────────────────────────────────
+# ── Step 1: Build image ─────────────────────────────────────────────────────
 if [[ "$SKIP_BUILD" == "false" ]]; then
-  "$SCRIPT_DIR/hooks/acr-build.sh"
+  if [[ "$LOCAL_BUILD" == "true" ]]; then
+    "$SCRIPT_DIR/hooks/local-build.sh"
+  else
+    "$SCRIPT_DIR/hooks/acr-build.sh"
+  fi
 else
-  echo "⏭️  Skipping ACR build (--skip-build)"
+  echo "⏭️  Skipping build (--skip-build)"
 fi
 
 # ── Step 2: Update the Container Apps Job ────────────────────────────────────
