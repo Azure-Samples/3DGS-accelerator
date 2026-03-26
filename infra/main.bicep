@@ -84,6 +84,7 @@ module storage 'modules/storage.bicep' = {
     name: '${abbrs.storageAccount}${resourceToken}'
     location: location
     tags: union(tags, storageExtraTags)
+    allowSharedKeyAccess: useStorageKeys
   }
 }
 
@@ -149,6 +150,7 @@ module job 'modules/container-apps-job.bicep' = {
     useGpu: useGpu
     gpuProfileName: useGpu ? containerAppsEnv.outputs.gpuProfileName : 'Consumption'
     useStorageKeys: useStorageKeys
+    storageConnectionString: useStorageKeys ? storage.outputs.connectionString : ''
     processorBackend: processorBackend
   }
 }

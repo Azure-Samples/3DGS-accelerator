@@ -589,13 +589,23 @@ impl GaussianSplatBackend for GsplatBackend {
 
             let output = cmd.output();
             
-            // If gsplat converter is not available, try generic converter
+            // If gsplat module converter not available, try configured converter binary
             if output.is_err() || !output.as_ref().unwrap().status.success() {
-                debug!("gsplat converter not available, trying inline Python converter");
+                debug!("gsplat module not available, trying converter binary: {}", converter_bin);
                 
-                // Inline PLY-to-SPLAT converter using Python + numpy
-                let script = format!(r#"
-import numpy as np, struct, sys
+                let mut bin_cmd = Command::new(&converter_bin);
+                bin_cmd
+                    .arg("--input").arg(&ply_path_clone)
+                    .arg("--output").arg(&output_path_clone);
+                
+                let bin_output = bin_cmd.output();
+                
+                if bin_output.is_err() || !bin_output.as_ref().unwrap().status.success() {
+                    debug!("Converter binary not available, using inline Python fallback");
+                
+                    // Inline PLY-to-SPLAT converter — stdlib only (no numpy)
+                    let script = format!(r#"
+import struct, sys
 from pathlib import Path
 
 ply_path = Path(sys.argv[1])
@@ -628,7 +638,6 @@ with open(ply_path, 'rb') as f:
     splat_data = bytearray(n_verts * 32)
     
     if is_binary:
-        # Try to read as structured binary
         float_count = len(props)
         for i in range(n_verts):
             raw = f.read(float_count * 4)
@@ -636,12 +645,10 @@ with open(ply_path, 'rb') as f:
                 break
             x, y, z = struct.unpack_from('<3f', raw, 0)
             struct.pack_into('<3f', splat_data, i*32, x, y, z)
-            # Default scale, color, rotation
             struct.pack_into('<3f', splat_data, i*32+12, 0.01, 0.01, 0.01)
             struct.pack_into('<4B', splat_data, i*32+24, 128, 128, 128, 200)
             struct.pack_into('<4B', splat_data, i*32+28, 128, 0, 0, 0)
     else:
-        # ASCII format
         lines_data = f.read().decode('ascii', errors='replace').strip().split('\n')
         for i, line in enumerate(lines_data[:n_verts]):
             vals = line.split()
@@ -672,6 +679,7 @@ print(f"Converted {{n_verts}} gaussians to SPLAT ({{len(splat_data)}} bytes)")
                         py_output.status,
                         stderr
                     );
+                }
                 }
             }
 

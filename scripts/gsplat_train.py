@@ -154,26 +154,28 @@ def load_colmap_data(colmap_dir, images_dir):
     cameras_file = colmap_dir / "cameras.bin"
     with open(cameras_file, "rb") as f:
         num_cameras = struct.unpack("Q", f.read(8))[0]
-        # COLMAP camera model parameter counts
+        # COLMAP camera model parameter counts (from colmap/src/base/camera_models.h)
         CAMERA_MODEL_NUM_PARAMS = {
-            0: 3,  # SIMPLE_PINHOLE: f, cx, cy
-            1: 4,  # PINHOLE: fx, fy, cx, cy
-            2: 4,  # SIMPLE_RADIAL: f, cx, cy, k1
-            3: 5,  # RADIAL: f, cx, cy, k1, k2
-            4: 8,  # OPENCV: fx, fy, cx, cy, k1, k2, p1, p2
-            5: 12, # OPENCV_FISHEYE: fx, fy, cx, cy, k1, k2, k3, k4, ...
-            6: 5,  # FULL_OPENCV: fx, fy, cx, cy, k1 (partial)
-            7: 12, # FOV
-            8: 4,  # SIMPLE_RADIAL_FISHEYE
-            9: 5,  # RADIAL_FISHEYE
-            10: 5, # THIN_PRISM_FISHEYE
+            0: 3,   # SIMPLE_PINHOLE: f, cx, cy
+            1: 4,   # PINHOLE: fx, fy, cx, cy
+            2: 4,   # SIMPLE_RADIAL: f, cx, cy, k1
+            3: 5,   # RADIAL: f, cx, cy, k1, k2
+            4: 8,   # OPENCV: fx, fy, cx, cy, k1, k2, p1, p2
+            5: 8,   # OPENCV_FISHEYE: fx, fy, cx, cy, k1, k2, k3, k4
+            6: 12,  # FULL_OPENCV: fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6
+            7: 5,   # FOV: fx, fy, cx, cy, omega
+            8: 4,   # SIMPLE_RADIAL_FISHEYE: f, cx, cy, k1
+            9: 5,   # RADIAL_FISHEYE: f, cx, cy, k1, k2
+            10: 12, # THIN_PRISM_FISHEYE: fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, sx1, sy1
         }
         for _ in range(num_cameras):
             camera_id = struct.unpack("I", f.read(4))[0]
             model_id = struct.unpack("i", f.read(4))[0]
             width = struct.unpack("Q", f.read(8))[0]
             height = struct.unpack("Q", f.read(8))[0]
-            num_params = CAMERA_MODEL_NUM_PARAMS.get(model_id, 4)
+            num_params = CAMERA_MODEL_NUM_PARAMS.get(model_id)
+            if num_params is None:
+                raise ValueError(f"Unknown COLMAP camera model ID: {model_id}")
             params = read_binary_array(f, np.float64, num_params)
             
             cameras[camera_id] = {

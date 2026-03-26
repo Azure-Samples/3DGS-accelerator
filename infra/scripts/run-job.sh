@@ -43,6 +43,13 @@ echo "   Resource Group: $AZURE_RESOURCE_GROUP"
 echo "   Batch Prefix:   $BATCH_PREFIX"
 echo ""
 
+# Update the job's BATCH_INPUT_PREFIX env var before starting
+az containerapp job update \
+  --name "$JOB_NAME" \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --set-env-vars "BATCH_INPUT_PREFIX=${BATCH_PREFIX}" \
+  --output none 2>/dev/null
+
 # Start the job
 EXECUTION=$(az containerapp job start \
   --name "$JOB_NAME" \
