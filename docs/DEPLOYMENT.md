@@ -5,6 +5,7 @@ Production deployment patterns and operational best practices.
 ## Table of Contents
 
 * [Container Deployment](#container-deployment)
+* [Azure Container Apps Job (GPU) — azd](#azure-container-apps-job-gpu--azd)
 * [Batch Mode (Azure SDK)](#batch-mode-azure-sdk)
 * [Resource Requirements](#resource-requirements)
 * [Storage Configuration](#storage-configuration)
@@ -307,6 +308,296 @@ az container delete --resource-group $RESOURCE_GROUP --name $CONTAINER_NAME
 - Use **AKS** for consistent high-volume processing
 - Set `--restart-policy OnFailure` for one-time jobs
 - Use spot instances for non-critical workloads
+
+---
+
+## Azure Container Apps Job (GPU) — azd
+
+Deploy the 3DGS processor as a **serverless GPU job** on Azure Container Apps using the
+Azure Developer CLI (`azd`). The job runs in batch mode: download videos from Azure Blob
+Storage → extract frames → COLMAP reconstruction → gsplat GPU training → export PLY/SPLAT
+→ upload results → exit.
+
+**Key characteristics:**
+- **Serverless GPU** — NVIDIA T4 (16 GB VRAM) via `Consumption-GPU-NC8as-T4` workload profile
+- **No local Docker required** — images are built remotely via ACR Tasks
+- **Batch mode** — single job execution, no long-running container
+- **Managed Identity** — user-assigned MI for RBAC-based access to ACR and Storage
+- **RBAC separation** — infrastructure provisioning and role assignments are separate steps
+
+### Prerequisites
+
+| Requirement | Purpose |
+|-------------|---------|
+| [Azure CLI](https://aka.ms/installazurecli) (`az`) | Azure resource management |
+| [Azure Developer CLI](https://aka.ms/install-azd) (`azd`) | Infrastructure-as-code orchestration |
+| Azure subscription | With GPU quota in your target region |
+| Test data | Download via `./scripts/e2e/01-download-testdata.sh` |
+
+**No local Docker daemon is needed.** The GPU image is built remotely on Azure Container
+Registry Tasks.
+
+### Quick Start
+
+```bash
+# 1. Initialize the azd environment
+azd init
+
+# 2. Configure environment
+azd env set AZURE_LOCATION swedencentral
+azd env set USE_GPU true
+
+# 3. Provision infrastructure (also builds the GPU image on ACR — ~40 min)
+azd provision
+
+# 4. (Privileged user) Assign RBAC roles to the Managed Identity
+./infra/scripts/assign-rbac.sh
+
+# 5. Verify RBAC assignments
+./infra/scripts/verify-rbac.sh
+
+# 6. Upload test data to Azure Blob Storage
+./infra/scripts/upload-testdata.sh
+
+# 7. Run the GPU job
+./infra/scripts/run-job.sh --logs
+```
+
+### What Gets Provisioned
+
+`azd provision` creates the following Azure resources (all in a single resource group):
+
+| Resource | Bicep Module | Purpose |
+|----------|-------------|---------|
+| Resource Group | `main.bicep` | `rg-<env-name>` |
+| User-Assigned Managed Identity | `modules/managed-identity.bicep` | Authenticate to ACR and Storage |
+| Azure Container Registry (Basic) | `modules/acr.bicep` | Store GPU Docker images |
+| Storage Account + 4 containers | `modules/storage.bicep` | `input`, `output`, `processed`, `error` |
+| Log Analytics Workspace | `modules/monitoring.bicep` | Container log aggregation |
+| Container Apps Environment | `modules/container-apps-env.bicep` | GPU workload profile (T4) |
+| Container Apps Job (Manual trigger) | `modules/container-apps-job.bicep` | The processor job itself |
+
+After provisioning, the `postprovision` hook automatically:
+1. Builds the GPU Docker image via ACR Tasks (`infra/scripts/hooks/acr-build.sh`)
+2. Updates the Container Apps Job with the new image
+
+### RBAC Requirements — Read This Carefully
+
+RBAC role assignments are **intentionally separated** from infrastructure provisioning.
+This is because in many organizations, the person deploying infrastructure does not have
+permission to assign IAM roles. The two operations may require different privilege levels.
+
+#### Permissions Required by the Deployer (the person running `azd provision`)
+
+The deployer needs these permissions **on the Azure subscription or resource group**:
+
+| Permission | Why |
+|------------|-----|
+| `Microsoft.Resources/subscriptions/resourceGroups/write` | Create the resource group |
+| `Microsoft.ContainerRegistry/registries/*` | Create ACR and push images |
+| `Microsoft.Storage/storageAccounts/*` | Create storage account and containers |
+| `Microsoft.App/managedEnvironments/*` | Create Container Apps Environment |
+| `Microsoft.App/jobs/*` | Create Container Apps Job |
+| `Microsoft.ManagedIdentity/userAssignedIdentities/*` | Create managed identity |
+| `Microsoft.OperationalInsights/workspaces/*` | Create Log Analytics workspace |
+
+Typically the **Contributor** built-in role on the subscription is sufficient.
+
+The `preprovision` hook (`infra/scripts/hooks/preprovision.sh`) also attempts to assign
+deployer-level RBAC (AcrPush, Storage Blob Data Contributor) so the deployer can push
+images and upload test data. This requires the deployer to have **User Access Administrator**
+or **Owner** on the resource group. If the deployer lacks this permission, the hook
+continues (it's non-blocking) — a privileged user can assign these roles later.
+
+#### Permissions Required for the Managed Identity (assigned after provisioning)
+
+The Managed Identity needs two role assignments so the container job can pull images
+and read/write blobs at runtime:
+
+| Role | Scope | Role Definition ID | Purpose |
+|------|-------|-------------------|---------|
+| **AcrPull** | Container Registry | `7f951dda-4ed3-4680-a7ca-43fe172d538d` | Pull GPU image from ACR |
+| **Storage Blob Data Contributor** | Storage Account | `ba92f5b4-2d11-453d-a403-e96b0029c9fe` | Download input videos, upload outputs, move blobs |
+
+#### Who Can Assign These Roles?
+
+A user with **one** of these roles on the target scope:
+- **Owner** (full control, including RBAC)
+- **User Access Administrator** (RBAC management only)
+- A custom role with `Microsoft.Authorization/roleAssignments/write` permission
+
+> **If the deployer does not have these permissions**, the `azd provision` step will
+> succeed but the job will fail at runtime with authentication errors (HTTP 403 on
+> Storage or image pull failures on ACR). Have a privileged user run the RBAC scripts.
+
+#### Assigning RBAC Roles
+
+```bash
+# Assign roles via Azure CLI (reads values from azd env automatically)
+./infra/scripts/assign-rbac.sh
+
+# Or assign via Bicep deployment (alternative)
+./infra/scripts/assign-rbac.sh --use-bicep
+```
+
+#### Verifying RBAC Roles
+
+```bash
+# Check that both roles are assigned
+./infra/scripts/verify-rbac.sh
+```
+
+Expected output when roles are correctly assigned:
+```
+🔍 Verifying RBAC role assignments for Managed Identity...
+   Principal ID: <managed-identity-principal-id>
+
+  ✅ AcrPull on Container Registry
+  ✅ Storage Blob Data Contributor on Storage Account
+
+✅ All RBAC role assignments are in place.
+```
+
+If any roles are missing:
+```
+  ❌ AcrPull on Container Registry — MISSING
+
+⚠️  1 RBAC role assignment(s) missing.
+   Run './infra/scripts/assign-rbac.sh' as a privileged user to fix.
+```
+
+#### What Fails Without RBAC
+
+| Missing Role | Symptom |
+|--------------|---------|
+| **AcrPull** | Job execution fails immediately — Container Apps cannot pull the image. The execution shows `Failed` status with no container logs (image never starts). |
+| **Storage Blob Data Contributor** | Container starts but fails with `Failed to download input blobs from Azure Blob Storage` — the managed identity token is rejected with HTTP 403. |
+
+### Uploading Test Data
+
+The South Building dataset (128 multi-view images from UNC Chapel Hill) is used for testing.
+The upload script downloads it if needed, creates 3 test videos, and uploads them:
+
+```bash
+# Download test data + upload to blob storage (default prefix: south_building/)
+./infra/scripts/upload-testdata.sh
+
+# Custom blob prefix
+./infra/scripts/upload-testdata.sh --prefix my_scene/
+
+# Download only (no upload)
+./infra/scripts/upload-testdata.sh --download-only
+```
+
+### Running the Job
+
+```bash
+# Start job and return immediately
+./infra/scripts/run-job.sh
+
+# Start job, wait for completion, show status
+./infra/scripts/run-job.sh --wait
+
+# Start job, wait, then show container logs
+./infra/scripts/run-job.sh --logs
+```
+
+A successful run produces these outputs in the `output` blob container:
+
+| File | Description | Typical Size |
+|------|-------------|-------------|
+| `south_building/south_building.ply` | 3D Gaussian point cloud (real GPU-trained geometry) | ~65 KB |
+| `south_building/south_building.splat` | Web-optimized format for real-time rendering | ~53 KB |
+| `south_building/manifest.json` | Video metadata (resolution, duration, codec, frame count) | ~7 KB |
+| `south_building/.checkpoint.json` | Pipeline progress tracking | ~11 KB |
+
+Input videos are moved from `input/` to `processed/` on success, or `error/` on failure.
+
+### Redeploying Code Changes
+
+After modifying the processor code, rebuild and redeploy without re-provisioning:
+
+```bash
+# Build new image on ACR + update the job
+./infra/scripts/deploy-job.sh
+
+# Or skip the build and just redeploy the existing image
+./infra/scripts/deploy-job.sh --skip-build
+```
+
+### Configuration Variables
+
+Set these via `azd env set <NAME> <VALUE>` before provisioning:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AZURE_LOCATION` | *(required)* | Azure region. Must support GPU T4 (e.g., `swedencentral`, `eastus`, `westus`) |
+| `USE_GPU` | `true` | Enable GPU workload profile |
+| `GPU_PROFILE_TYPE` | `Consumption-GPU-NC8as-T4` | GPU type (`Consumption-GPU-NC8as-T4` or `Consumption-GPU-NC24-A100`) |
+| `PROCESSOR_BACKEND` | `gsplat` | 3DGS backend (`gsplat`, `gaussian-splatting`, `mock`) |
+| `INCLUDE_RBAC` | `true` | Include RBAC assignments in Bicep deployment |
+| `USE_STORAGE_KEYS` | `false` | Use storage account keys instead of RBAC (fallback) |
+
+### GPU Region Availability
+
+Serverless GPU (T4) Container Apps is available in these regions:
+
+`swedencentral`, `eastus`, `westus`, `canadacentral`, `brazilsouth`, `australiaeast`,
+`italynorth`, `francecentral`, `centralindia`, `japaneast`, `northcentralus`,
+`southcentralus`, `southeastasia`, `southindia`, `westeurope`, `westus2`, `westus3`
+
+If you get a deployment error about workload profiles, ensure your subscription has
+GPU quota in the selected region. Check quota at:
+[Azure Portal → Quotas](https://portal.azure.com/#view/Microsoft_Azure_Capacity/QuotaMenuBlade)
+
+### Cleaning Up RBAC Before Teardown
+
+Before running `azd down`, remove the RBAC assignments:
+
+```bash
+./infra/scripts/cleanup-rbac.sh
+azd down --purge --force
+```
+
+### Scripts Reference
+
+All infrastructure scripts are in `infra/scripts/`:
+
+| Script | Purpose | Requires Privilege? |
+|--------|---------|-------------------|
+| `hooks/preprovision.sh` | Captures deployer identity, runs RBAC preflight check | No (auto-run by azd) |
+| `hooks/postprovision.sh` | Builds GPU image on ACR, updates job | No (auto-run by azd) |
+| `hooks/acr-build.sh` | Creates minimal staging dir, runs `az acr build` for GPU target | No |
+| `assign-rbac.sh` | Assigns AcrPull + Storage Blob Data Contributor to MI | **Yes** — Owner or User Access Admin |
+| `verify-rbac.sh` | Checks if required RBAC roles are assigned | No |
+| `cleanup-rbac.sh` | Removes RBAC role assignments | **Yes** — Owner or User Access Admin |
+| `run-job.sh` | Starts a job execution with `--wait`/`--logs` options | No |
+| `deploy-job.sh` | Rebuilds image on ACR + updates job | No |
+| `upload-testdata.sh` | Downloads South Building dataset + uploads videos to blob storage | No (needs Storage Blob Data Contributor on deployer) |
+
+### Troubleshooting
+
+**"MANAGED_IDENTITY_PRINCIPAL_ID is not set"**
+Run `azd provision` first — this creates the managed identity and saves its principal ID.
+
+**Image pull failure (no container logs)**
+The AcrPull role is missing. Run `./infra/scripts/assign-rbac.sh`.
+
+**"Failed to download input blobs from Azure Blob Storage"**
+Either: (a) Storage Blob Data Contributor is missing — run `./infra/scripts/assign-rbac.sh`,
+or (b) no blobs exist at the `BATCH_INPUT_PREFIX` — run `./infra/scripts/upload-testdata.sh`.
+
+**"Reconstruction quality too low"**
+Increase `FRAME_RATE` (e.g., from 2 to 3) in the job env vars to extract more frames.
+
+**ACR build timeout**
+The GPU image build compiles COLMAP from source (~30 min). The default timeout is 3600s.
+If it still times out, check ACR Tasks quotas.
+
+**COLMAP matching timeout**
+Ensure `COLMAP_MATCHER=sequential` (not `exhaustive`) in the job env vars.
+
+---
 
 ## Batch Mode (Azure SDK)
 
