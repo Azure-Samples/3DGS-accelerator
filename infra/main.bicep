@@ -31,14 +31,41 @@ param deployerPrincipalId string = ''
 @description('Extra tags for the storage account (e.g., security controls).')
 param storageExtraTags object = {}
 
-// ── Naming ──────────────────────────────────────────────────────────────────
+// ── Existing Resource Parameters ────────────────────────────────────────────
+// Set via: ./scripts/configure-existing-resources.sh
+// When a name is provided the resource is referenced with the Bicep `existing`
+// keyword — its lifecycle is NOT managed by this deployment.
+
+@description('Name of an existing Resource Group to deploy into. If empty, a new one is created.')
+param existingResourceGroupName string = ''
+
+@description('Name of an existing Azure Container Registry to reuse (must be in the target resource group). If empty, a new one is created.')
+param existingAcrName string = ''
+
+@description('Name of an existing Storage Account to reuse (must be in the target resource group). If empty, a new one is created.')
+param existingStorageAccountName string = ''
+
+@description('Name of an existing Container Apps Environment to reuse (must be in the target resource group). If empty, a new one is created.')
+param existingContainerAppsEnvName string = ''
+
+// ── Naming & Computed Variables ─────────────────────────────────────────────
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
 
+var useExistingRg = !empty(existingResourceGroupName)
+var useExistingAcr = !empty(existingAcrName)
+var useExistingStorage = !empty(existingStorageAccountName)
+var useExistingEnv = !empty(existingContainerAppsEnvName)
+
+var rgName = useExistingRg ? existingResourceGroupName : '${abbrs.resourceGroup}${environmentName}'
+
 // ── Resource Group ──────────────────────────────────────────────────────────
-resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
-  name: '${abbrs.resourceGroup}${environmentName}'
+// Only created when not reusing an existing one. When an existing RG is used,
+// modules scope to it via resourceGroup(rgName) without declaring it here,
+// so its tags and properties are left untouched.
+resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = if (!useExistingRg) {
+  name: rgName
   location: location
   tags: tags
 }
@@ -46,7 +73,8 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 // ── Managed Identity ────────────────────────────────────────────────────────
 module managedIdentity 'modules/managed-identity.bicep' = {
   name: 'managed-identity'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
     name: '${abbrs.managedIdentity}-${resourceToken}'
     location: location
@@ -55,9 +83,11 @@ module managedIdentity 'modules/managed-identity.bicep' = {
 }
 
 // ── Monitoring ──────────────────────────────────────────────────────────────
-module monitoring 'modules/monitoring.bicep' = {
+// Only needed when creating a new Container Apps Environment.
+module monitoring 'modules/monitoring.bicep' = if (!useExistingEnv) {
   name: 'monitoring'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
     name: '${abbrs.operationalInsightsWorkspace}-${resourceToken}'
     location: location
@@ -66,9 +96,10 @@ module monitoring 'modules/monitoring.bicep' = {
 }
 
 // ── Container Registry ──────────────────────────────────────────────────────
-module acr 'modules/acr.bicep' = {
+module acr 'modules/acr.bicep' = if (!useExistingAcr) {
   name: 'acr'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
     name: '${abbrs.containerRegistry}${resourceToken}'
     location: location
@@ -76,10 +107,20 @@ module acr 'modules/acr.bicep' = {
   }
 }
 
+module existingAcrRef 'modules/existing-acr.bicep' = if (useExistingAcr) {
+  name: 'existing-acr'
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
+  params: {
+    name: existingAcrName
+  }
+}
+
 // ── Storage Account ─────────────────────────────────────────────────────────
-module storage 'modules/storage.bicep' = {
+module storage 'modules/storage.bicep' = if (!useExistingStorage) {
   name: 'storage'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
     name: '${abbrs.storageAccount}${resourceToken}'
     location: location
@@ -88,10 +129,21 @@ module storage 'modules/storage.bicep' = {
   }
 }
 
+module existingStorageRef 'modules/existing-storage.bicep' = if (useExistingStorage) {
+  name: 'existing-storage'
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
+  params: {
+    name: existingStorageAccountName
+    allowSharedKeyAccess: useStorageKeys
+  }
+}
+
 // ── Container Apps Environment ──────────────────────────────────────────────
-module containerAppsEnv 'modules/container-apps-env.bicep' = {
+module containerAppsEnv 'modules/container-apps-env.bicep' = if (!useExistingEnv) {
   name: 'container-apps-env'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
     name: '${abbrs.appContainerAppsEnvironment}-${resourceToken}'
     location: location
@@ -102,12 +154,24 @@ module containerAppsEnv 'modules/container-apps-env.bicep' = {
   }
 }
 
+module existingEnvRef 'modules/existing-container-apps-env.bicep' = if (useExistingEnv) {
+  name: 'existing-container-apps-env'
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
+  params: {
+    name: existingContainerAppsEnvName
+    useGpu: useGpu
+    gpuProfileType: gpuProfileType
+  }
+}
+
 // ── RBAC: AcrPull for Managed Identity (conditional) ────────────────────────
 module acrPullRole 'modules/acr-pull-role.bicep' = if (includeRbac) {
   name: 'acr-pull-role'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
-    containerRegistryName: acr.outputs.name
+    containerRegistryName: useExistingAcr ? existingAcrRef.outputs.name : acr.outputs.name
     managedIdentityPrincipalId: managedIdentity.outputs.principalId
   }
 }
@@ -115,9 +179,10 @@ module acrPullRole 'modules/acr-pull-role.bicep' = if (includeRbac) {
 // ── RBAC: Storage Blob Data Contributor for Managed Identity (conditional) ──
 module storageBlobRole 'modules/storage-blob-role.bicep' = if (includeRbac) {
   name: 'storage-blob-role'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
-    storageAccountName: storage.outputs.name
+    storageAccountName: useExistingStorage ? existingStorageRef.outputs.name : storage.outputs.name
     managedIdentityPrincipalId: managedIdentity.outputs.principalId
   }
 }
@@ -125,46 +190,53 @@ module storageBlobRole 'modules/storage-blob-role.bicep' = if (includeRbac) {
 // ── RBAC: Deployer roles (conditional) ──────────────────────────────────────
 module deployerRoles 'modules/deployer-roles.bicep' = if (!empty(deployerPrincipalId)) {
   name: 'deployer-roles'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
-    containerRegistryName: acr.outputs.name
-    storageAccountName: storage.outputs.name
+    containerRegistryName: useExistingAcr ? existingAcrRef.outputs.name : acr.outputs.name
+    storageAccountName: useExistingStorage ? existingStorageRef.outputs.name : storage.outputs.name
     deployerPrincipalId: deployerPrincipalId
   }
 }
 
 // ── Container Apps Job ──────────────────────────────────────────────────────
+// Always created and managed by this deployment.
 module job 'modules/container-apps-job.bicep' = {
   name: 'container-apps-job'
-  scope: rg
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
   params: {
     name: '${abbrs.appJobs}-${resourceToken}'
     location: location
     tags: tags
     environmentName: environmentName
-    containerAppsEnvironmentId: containerAppsEnv.outputs.id
-    containerRegistryLoginServer: acr.outputs.loginServer
+    containerAppsEnvironmentId: useExistingEnv ? existingEnvRef.outputs.id : containerAppsEnv.outputs.id
+    containerRegistryLoginServer: useExistingAcr ? existingAcrRef.outputs.loginServer : acr.outputs.loginServer
     managedIdentityId: managedIdentity.outputs.resourceId
     managedIdentityClientId: managedIdentity.outputs.clientId
-    storageAccountName: storage.outputs.name
+    storageAccountName: useExistingStorage ? existingStorageRef.outputs.name : storage.outputs.name
     useGpu: useGpu
-    gpuProfileName: useGpu ? containerAppsEnv.outputs.gpuProfileName : 'Consumption'
+    gpuProfileName: useGpu
+      ? (useExistingEnv ? existingEnvRef.outputs.gpuProfileName : containerAppsEnv.outputs.gpuProfileName)
+      : 'Consumption'
     useStorageKeys: useStorageKeys
-    storageConnectionString: useStorageKeys ? storage.outputs.connectionString : ''
+    storageConnectionString: useStorageKeys
+      ? (useExistingStorage ? existingStorageRef.outputs.connectionString : storage.outputs.connectionString)
+      : ''
     processorBackend: processorBackend
   }
 }
 
 // ── Outputs (saved to azd env) ──────────────────────────────────────────────
-output AZURE_CONTAINER_REGISTRY_NAME string = acr.outputs.name
-output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.outputs.loginServer
-output AZURE_CONTAINER_REGISTRY_ID string = acr.outputs.id
-output AZURE_CONTAINER_ENVIRONMENT_NAME string = containerAppsEnv.outputs.name
-output AZURE_STORAGE_ACCOUNT_NAME string = storage.outputs.name
-output AZURE_STORAGE_ACCOUNT_ID string = storage.outputs.id
+output AZURE_CONTAINER_REGISTRY_NAME string = useExistingAcr ? existingAcrRef.outputs.name : acr.outputs.name
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = useExistingAcr ? existingAcrRef.outputs.loginServer : acr.outputs.loginServer
+output AZURE_CONTAINER_REGISTRY_ID string = useExistingAcr ? existingAcrRef.outputs.id : acr.outputs.id
+output AZURE_CONTAINER_ENVIRONMENT_NAME string = useExistingEnv ? existingEnvRef.outputs.name : containerAppsEnv.outputs.name
+output AZURE_STORAGE_ACCOUNT_NAME string = useExistingStorage ? existingStorageRef.outputs.name : storage.outputs.name
+output AZURE_STORAGE_ACCOUNT_ID string = useExistingStorage ? existingStorageRef.outputs.id : storage.outputs.id
 output MANAGED_IDENTITY_NAME string = managedIdentity.outputs.name
 output MANAGED_IDENTITY_PRINCIPAL_ID string = managedIdentity.outputs.principalId
 output MANAGED_IDENTITY_CLIENT_ID string = managedIdentity.outputs.clientId
 output MANAGED_IDENTITY_RESOURCE_ID string = managedIdentity.outputs.resourceId
 output JOB_NAME string = job.outputs.name
-output AZURE_RESOURCE_GROUP string = rg.name
+output AZURE_RESOURCE_GROUP string = rgName

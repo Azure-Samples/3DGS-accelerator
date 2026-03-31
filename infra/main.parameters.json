@@ -28,6 +28,18 @@
     },
     "storageExtraTags": {
       "value": { "SecurityControl": "Ignore" }
+    },
+    "existingResourceGroupName": {
+      "value": "${EXISTING_RESOURCE_GROUP=}"
+    },
+    "existingAcrName": {
+      "value": "${EXISTING_ACR_NAME=}"
+    },
+    "existingStorageAccountName": {
+      "value": "${EXISTING_STORAGE_ACCOUNT_NAME=}"
+    },
+    "existingContainerAppsEnvName": {
+      "value": "${EXISTING_CONTAINER_APPS_ENV_NAME=}"
     }
   }
 }

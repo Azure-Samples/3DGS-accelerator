@@ -9,3 +9,7 @@ hooks:
   postprovision:
     shell: sh
     run: ./infra/scripts/hooks/postprovision.sh
+  predown:
+    shell: sh
+    run: ./infra/scripts/hooks/predown.sh
+    continueOnError: false
