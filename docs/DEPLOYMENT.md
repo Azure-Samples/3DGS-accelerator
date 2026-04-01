@@ -6,6 +6,8 @@ Production deployment patterns and operational best practices.
 
 * [Container Deployment](#container-deployment)
 * [Azure Container Apps Job (GPU) — azd](#azure-container-apps-job-gpu--azd)
+  * [Reusing Existing Azure Resources](#reusing-existing-azure-resources)
+  * [Full Quickstart and Teardown](#full-quickstart-and-teardown)
 * [Batch Mode (Azure SDK)](#batch-mode-azure-sdk)
 * [Resource Requirements](#resource-requirements)
 * [Storage Configuration](#storage-configuration)
@@ -324,6 +326,9 @@ Storage → extract frames → COLMAP reconstruction → gsplat GPU training →
 - **Batch mode** — single job execution, no long-running container
 - **Managed Identity** — user-assigned MI for RBAC-based access to ACR and Storage
 - **RBAC separation** — infrastructure provisioning and role assignments are separate steps
+- **Existing resource preservation** — optionally reuse pre-existing Resource Groups, ACR,
+  Storage Accounts, and Container Apps Environments. These resources are referenced via
+  Bicep's `existing` keyword and are **not** deleted by `azd down`
 
 ### Prerequisites
 
@@ -347,35 +352,42 @@ azd init
 azd env set AZURE_LOCATION swedencentral
 azd env set USE_GPU true
 
-# 3. Provision infrastructure (also builds the GPU image on ACR — ~40 min)
+# 3. (Optional) Reuse existing Azure resources instead of creating new ones
+#    See "Reusing Existing Azure Resources" below for details.
+./scripts/configure-existing-resources.sh
+
+# 4. Provision infrastructure (also builds the GPU image on ACR — ~40 min)
 azd provision
 
-# 4. (Privileged user) Assign RBAC roles to the Managed Identity
+# 5. (Privileged user) Assign RBAC roles to the Managed Identity
 ./infra/scripts/assign-rbac.sh
 
-# 5. Verify RBAC assignments
+# 6. Verify RBAC assignments
 ./infra/scripts/verify-rbac.sh
 
-# 6. Upload test data to Azure Blob Storage
+# 7. Upload test data to Azure Blob Storage
 ./infra/scripts/upload-testdata.sh
 
-# 7. Run the GPU job
+# 8. Run the GPU job
 ./infra/scripts/run-job.sh --logs
 ```
 
 ### What Gets Provisioned
 
-`azd provision` creates the following Azure resources (all in a single resource group):
+`azd provision` creates the following Azure resources (all in a single resource group).
+If you have configured existing resources via `./scripts/configure-existing-resources.sh`,
+those resources are **referenced** (Bicep `existing` keyword) rather than created — their
+lifecycle is not managed by this deployment, and `azd down` will not delete them.
 
-| Resource | Bicep Module | Purpose |
-|----------|-------------|---------|
-| Resource Group | `main.bicep` | `rg-<env-name>` |
-| User-Assigned Managed Identity | `modules/managed-identity.bicep` | Authenticate to ACR and Storage |
-| Azure Container Registry (Basic) | `modules/acr.bicep` | Store GPU Docker images |
-| Storage Account + 4 containers | `modules/storage.bicep` | `input`, `output`, `processed`, `error` |
-| Log Analytics Workspace | `modules/monitoring.bicep` | Container log aggregation |
-| Container Apps Environment | `modules/container-apps-env.bicep` | GPU workload profile (T4) |
-| Container Apps Job (Manual trigger) | `modules/container-apps-job.bicep` | The processor job itself |
+| Resource | Bicep Module | Purpose | Can Reuse Existing? |
+|----------|-------------|---------|---------------------|
+| Resource Group | `main.bicep` | `rg-<env-name>` | ✅ Yes |
+| User-Assigned Managed Identity | `modules/managed-identity.bicep` | Authenticate to ACR and Storage | No (always created) |
+| Azure Container Registry (Basic) | `modules/acr.bicep` | Store GPU Docker images | ✅ Yes |
+| Storage Account + 4 containers | `modules/storage.bicep` | `input`, `output`, `processed`, `error` | ✅ Yes |
+| Log Analytics Workspace | `modules/monitoring.bicep` | Container log aggregation | ✅ Yes |
+| Container Apps Environment | `modules/container-apps-env.bicep` | GPU workload profile (T4) | ✅ Yes |
+| Container Apps Job (Manual trigger) | `modules/container-apps-job.bicep` | The processor job itself | No (always created) |
 
 After provisioning, the `postprovision` hook automatically:
 1. Builds the GPU Docker image via ACR Tasks (`infra/scripts/hooks/acr-build.sh`)
@@ -537,6 +549,15 @@ Set these via `azd env set <NAME> <VALUE>` before provisioning:
 | `PROCESSOR_BACKEND` | `gsplat` | 3DGS backend (`gsplat`, `gaussian-splatting`, `mock`) |
 | `INCLUDE_RBAC` | `true` | Include RBAC assignments in Bicep deployment |
 | `USE_STORAGE_KEYS` | `false` | Use storage account keys instead of RBAC (fallback) |
+| `EXISTING_RESOURCE_GROUP` | *(empty)* | Name of an existing Resource Group to deploy into (see [Reusing Existing Resources](#reusing-existing-azure-resources)) |
+| `EXISTING_ACR_NAME` | *(empty)* | Name of an existing Azure Container Registry to reuse |
+| `EXISTING_STORAGE_ACCOUNT_NAME` | *(empty)* | Name of an existing Storage Account to reuse |
+| `EXISTING_CONTAINER_APPS_ENV_NAME` | *(empty)* | Name of an existing Container Apps Environment to reuse |
+| `EXISTING_LOG_ANALYTICS_NAME` | *(empty)* | Name of an existing Log Analytics workspace to reuse |
+| `FORCE_DELETE` | *(empty)* | Set to `true` to allow `azd down` when existing resources are configured |
+
+> **Tip:** Use `./scripts/configure-existing-resources.sh` to interactively set the
+> `EXISTING_*` variables instead of setting them manually.
 
 ### GPU Region Availability
 
@@ -559,6 +580,11 @@ Before running `azd down`, remove the RBAC assignments:
 azd down --purge --force
 ```
 
+> **⚠️ Existing resource protection:** If your environment is configured to reuse existing
+> Azure resources, `azd down` will be **blocked** by the `predown` hook to prevent
+> accidental deletion of shared infrastructure. See
+> [Reusing Existing Azure Resources](#reusing-existing-azure-resources) for details.
+
 ### Scripts Reference
 
 All infrastructure scripts are in `infra/scripts/`:
@@ -567,6 +593,7 @@ All infrastructure scripts are in `infra/scripts/`:
 |--------|---------|-------------------|
 | `hooks/preprovision.sh` | Captures deployer identity, runs RBAC preflight check | No (auto-run by azd) |
 | `hooks/postprovision.sh` | Builds GPU image on ACR, updates job | No (auto-run by azd) |
+| `hooks/predown.sh` | Blocks `azd down` when existing resources are configured (override with `FORCE_DELETE=true`) | No (auto-run by azd) |
 | `hooks/acr-build.sh` | Creates minimal staging dir, runs `az acr build` for GPU target | No |
 | `assign-rbac.sh` | Assigns AcrPull + Storage Blob Data Contributor to MI | **Yes** — Owner or User Access Admin |
 | `verify-rbac.sh` | Checks if required RBAC roles are assigned | No |
@@ -574,6 +601,12 @@ All infrastructure scripts are in `infra/scripts/`:
 | `run-job.sh` | Starts a job execution with `--wait`/`--logs` options | No |
 | `deploy-job.sh` | Rebuilds image on ACR + updates job | No |
 | `upload-testdata.sh` | Downloads South Building dataset + uploads videos to blob storage | No (needs Storage Blob Data Contributor on deployer) |
+
+Additional scripts in `scripts/`:
+
+| Script | Purpose | Requires Privilege? |
+|--------|---------|-------------------|
+| `configure-existing-resources.sh` | Interactive wizard to select existing Azure resources for reuse (sets azd env vars) | No (needs Azure CLI login) |
 
 ### Troubleshooting
 
@@ -596,6 +629,274 @@ If it still times out, check ACR Tasks quotas.
 
 **COLMAP matching timeout**
 Ensure `COLMAP_MATCHER=sequential` (not `exhaustive`) in the job env vars.
+
+**`azd down` blocked with "EXISTING RESOURCES DETECTED"**
+The `predown` hook prevents accidental deletion of shared resources. Either reset
+the existing resource configuration or explicitly opt in:
+```bash
+# Option 1: Remove existing resource configuration and tear down normally
+./scripts/configure-existing-resources.sh --reset
+azd down --purge --force
+
+# Option 2: Force delete (will destroy the entire resource group)
+azd env set FORCE_DELETE true
+azd down --purge --force
+```
+
+### Reusing Existing Azure Resources
+
+When deploying into an environment with pre-existing Azure infrastructure (e.g., a shared
+resource group, a team ACR, or a storage account with data), you can configure `azd` to
+**reference** those resources instead of creating new ones. Referenced resources use Bicep's
+`existing` keyword — their lifecycle is **not managed** by this deployment and they are
+**not deleted** by `azd down`.
+
+#### Which Resources Can Be Reused?
+
+| Resource | Env Variable | What Happens When Set |
+|----------|-------------|----------------------|
+| Resource Group | `EXISTING_RESOURCE_GROUP` | Deploy into this RG instead of creating `rg-<env-name>` |
+| Azure Container Registry | `EXISTING_ACR_NAME` | Reference existing ACR; skip `modules/acr.bicep` |
+| Storage Account | `EXISTING_STORAGE_ACCOUNT_NAME` | Reference existing storage; skip `modules/storage.bicep`. Required blob containers (`input`, `output`, `processed`, `error`) must already exist |
+| Container Apps Environment | `EXISTING_CONTAINER_APPS_ENV_NAME` | Reference existing env; skip `modules/container-apps-env.bicep` |
+| Log Analytics Workspace | `EXISTING_LOG_ANALYTICS_NAME` | Reference existing workspace; skip `modules/monitoring.bicep`. When reusing an existing Container Apps Environment, this is not needed (the existing env already has logging configured) |
+
+Resources that are **always** created by the deployment, regardless of configuration:
+- **Managed Identity** — a new user-assigned identity is always created
+- **Container Apps Job** — the processor job itself is always created
+- **RBAC role assignments** — AcrPull and Storage Blob Data Contributor (when `INCLUDE_RBAC=true`)
+
+#### Configuring Existing Resources (Interactive)
+
+The easiest way to configure resource reuse is the interactive wizard:
+
+```bash
+./scripts/configure-existing-resources.sh
+```
+
+The script:
+1. Lists available Resource Groups in your subscription
+2. Scans the selected RG for ACRs, Storage Accounts, and Container Apps Environments
+3. Lets you pick which resources to reuse (or skip to create new ones)
+4. Validates that required blob containers exist on a selected Storage Account
+5. Sets the `EXISTING_*` environment variables in the azd environment
+6. Sets `AZURE_LOCATION` to match the existing resource group's region
+
+#### Configuring Existing Resources (Manual)
+
+You can also set the variables directly:
+
+```bash
+azd env set EXISTING_RESOURCE_GROUP "my-shared-rg"
+azd env set EXISTING_ACR_NAME "myteamacr"
+azd env set EXISTING_STORAGE_ACCOUNT_NAME "mystorageaccount"
+azd env set EXISTING_CONTAINER_APPS_ENV_NAME "my-cae"
+azd env set EXISTING_LOG_ANALYTICS_NAME "my-law"
+```
+
+Leave a variable empty (or omit it) to create that resource fresh.
+
+#### Resetting to Fresh Resources
+
+To go back to creating all resources from scratch:
+
+```bash
+./scripts/configure-existing-resources.sh --reset
+```
+
+This clears all `EXISTING_*` variables and `FORCE_DELETE` from the azd environment.
+
+#### Teardown Protection (`predown` Hook)
+
+When any `EXISTING_*` variable is set, `azd down` is **blocked** by the `predown` hook
+(`infra/scripts/hooks/predown.sh`). This prevents accidental deletion of the resource
+group (and everything inside it, including the existing shared resources).
+
+The hook prints which existing resources are configured and exits with an error:
+
+```
+╔══════════════════════════════════════════════════════╗
+║  ⚠️  EXISTING RESOURCES DETECTED                     ║
+╚══════════════════════════════════════════════════════╝
+
+This environment references pre-existing Azure resources:
+   • Resource Group:             my-shared-rg
+   • Storage Account:            mystorageaccount
+
+Running 'azd down' would delete the resource group and ALL
+resources inside it, including those listed above.
+```
+
+To proceed with teardown despite existing resources:
+
+```bash
+# Explicitly opt in to deletion
+azd env set FORCE_DELETE true
+azd down --purge --force
+```
+
+> **⚠️ Warning:** `FORCE_DELETE` deletes the **entire resource group**, including any
+> existing resources you configured for reuse. Use with extreme caution.
+
+#### How It Works (Bicep)
+
+The `infra/main.bicep` template uses conditional deployment based on whether `EXISTING_*`
+parameters are empty:
+
+```bicep
+var useExistingAcr = !empty(existingAcrName)
+
+// New ACR — only created when not reusing
+module acr 'modules/acr.bicep' = if (!useExistingAcr) { ... }
+
+// Existing ACR — only referenced when reusing
+module existingAcrRef 'modules/existing-acr.bicep' = if (useExistingAcr) { ... }
+
+// Outputs resolve to whichever was used
+output AZURE_CONTAINER_REGISTRY_NAME string = useExistingAcr
+  ? existingAcrRef.outputs.name
+  : acr.outputs.name
+```
+
+The same pattern applies to Storage Account, Container Apps Environment, and Resource Group.
+
+### Full Quickstart and Teardown
+
+Step-by-step instructions covering the complete lifecycle — from initial setup through
+a successful job run to clean teardown.
+
+#### Prerequisites
+
+Ensure the following are installed and configured:
+
+```bash
+# Azure CLI — logged in
+az login
+az account show  # verify correct subscription
+
+# Azure Developer CLI
+azd version      # requires azd ≥ 1.5
+
+# Test data (South Building dataset)
+./scripts/e2e/01-download-testdata.sh
+```
+
+#### Quickstart: Fresh Deployment (New Resources)
+
+```bash
+# ── 1. Initialize ────────────────────────────────────────────────────────
+azd init
+# Choose an environment name (e.g., "3dgs-dev")
+
+# ── 2. Configure ─────────────────────────────────────────────────────────
+azd env set AZURE_LOCATION swedencentral    # Must support GPU T4
+azd env set USE_GPU true
+
+# ── 3. Provision infrastructure ──────────────────────────────────────────
+# Creates: RG, ACR, Storage, Container Apps Env, MI, Job
+# Also builds the GPU Docker image on ACR (~40 min first time)
+azd provision
+
+# ── 4. Assign RBAC roles ─────────────────────────────────────────────────
+# Requires Owner or User Access Administrator on the resource group
+./infra/scripts/assign-rbac.sh
+./infra/scripts/verify-rbac.sh
+
+# ── 5. Upload test data ──────────────────────────────────────────────────
+./infra/scripts/upload-testdata.sh
+
+# ── 6. Run the job ────────────────────────────────────────────────────────
+./infra/scripts/run-job.sh --logs
+
+# ── 7. Verify outputs ────────────────────────────────────────────────────
+# Check the output blob container for PLY, SPLAT, manifest, checkpoint files
+STORAGE_ACCOUNT=$(azd env get-value AZURE_STORAGE_ACCOUNT_NAME)
+az storage blob list --account-name "$STORAGE_ACCOUNT" -c output --auth-mode login -o table
+```
+
+#### Quickstart: Deployment with Existing Resources
+
+```bash
+# ── 1. Initialize ────────────────────────────────────────────────────────
+azd init
+
+# ── 2. Configure existing resources ──────────────────────────────────────
+# Interactive: select which existing resources to reuse
+./scripts/configure-existing-resources.sh
+
+# The script sets AZURE_LOCATION automatically from the resource group.
+# Optionally configure additional settings:
+azd env set USE_GPU true
+
+# ── 3. Provision ─────────────────────────────────────────────────────────
+# Only creates resources that aren't being reused (MI, Job, and any
+# resources you chose to create fresh)
+azd provision
+
+# ── 4. Assign RBAC + upload data + run ────────────────────────────────────
+./infra/scripts/assign-rbac.sh
+./infra/scripts/verify-rbac.sh
+./infra/scripts/upload-testdata.sh
+./infra/scripts/run-job.sh --logs
+```
+
+#### Teardown: Fresh Deployment
+
+When all resources were created by `azd`, teardown is straightforward:
+
+```bash
+# ── 1. Clean up RBAC assignments ─────────────────────────────────────────
+./infra/scripts/cleanup-rbac.sh
+
+# ── 2. Destroy all resources ─────────────────────────────────────────────
+azd down --purge --force
+# Deletes: Resource Group and all resources inside it
+# --purge: permanently deletes soft-delete-enabled resources (Key Vault, etc.)
+# --force: skip confirmation prompts
+```
+
+#### Teardown: Deployment with Existing Resources
+
+When existing resources are configured, `azd down` is blocked to prevent accidental
+deletion. You have two options:
+
+**Option A — Remove only deployment-managed resources (recommended):**
+
+This approach leaves existing shared resources intact and only removes what the
+deployment created (Managed Identity, Container Apps Job, RBAC assignments):
+
+```bash
+# 1. Clean up RBAC assignments
+./infra/scripts/cleanup-rbac.sh
+
+# 2. Reset existing resource config so azd down only targets managed resources
+./scripts/configure-existing-resources.sh --reset
+
+# 3. Tear down
+azd down --purge --force
+```
+
+> **Note:** Because `azd down` deletes the **entire resource group**, this option still
+> deletes the RG and all resources in it when the RG was created by the deployment. If
+> you deployed into an *existing* RG, be aware that `azd down` will attempt to delete
+> that RG too. In that case, use Option B or manually delete only the managed resources.
+
+**Option B — Force delete everything (use with caution):**
+
+```bash
+# 1. Clean up RBAC assignments
+./infra/scripts/cleanup-rbac.sh
+
+# 2. Explicitly opt in to deletion
+azd env set FORCE_DELETE true
+
+# 3. Destroy the entire resource group (including existing resources!)
+azd down --purge --force
+```
+
+> **⚠️ Warning:** This deletes the entire resource group and all resources inside it,
+> including any pre-existing ACR, Storage Account, or Container Apps Environment you
+> configured for reuse.
 
 ---
 
