@@ -35,20 +35,22 @@ param storageExtraTags object = {}
 // Set via: ./scripts/configure-existing-resources.sh
 // When a name is provided the resource is referenced with the Bicep `existing`
 // keyword — its lifecycle is NOT managed by this deployment.
+// Existing resources may live in a separate resource group from the one azd
+// manages. Set existingResourceGroupName to point at that RG.
 
-@description('Name of an existing Resource Group to deploy into. If empty, a new one is created.')
+@description('Resource group that contains the existing resources to reuse. May differ from the azd-managed resource group. If empty, existing resources are assumed to be in the azd-managed resource group.')
 param existingResourceGroupName string = ''
 
-@description('Name of an existing Azure Container Registry to reuse (must be in the target resource group). If empty, a new one is created.')
+@description('Name of an existing Azure Container Registry to reuse. If empty, a new one is created.')
 param existingAcrName string = ''
 
-@description('Name of an existing Storage Account to reuse (must be in the target resource group). If empty, a new one is created.')
+@description('Name of an existing Storage Account to reuse. If empty, a new one is created.')
 param existingStorageAccountName string = ''
 
-@description('Name of an existing Container Apps Environment to reuse (must be in the target resource group). If empty, a new one is created.')
+@description('Name of an existing Container Apps Environment to reuse. If empty, a new one is created.')
 param existingContainerAppsEnvName string = ''
 
-@description('Name of an existing Log Analytics workspace to reuse (must be in the target resource group). If empty, a new one is created — unless an existing Container Apps Environment is also provided, in which case monitoring is skipped entirely.')
+@description('Name of an existing Log Analytics workspace to reuse. If empty, a new one is created — unless an existing Container Apps Environment is also provided, in which case monitoring is skipped entirely.')
 param existingLogAnalyticsName string = ''
 
 // ── Naming & Computed Variables ─────────────────────────────────────────────
@@ -56,19 +58,18 @@ var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
 
-var useExistingRg = !empty(existingResourceGroupName)
 var useExistingAcr = !empty(existingAcrName)
 var useExistingStorage = !empty(existingStorageAccountName)
 var useExistingEnv = !empty(existingContainerAppsEnvName)
 var useExistingMonitoring = !empty(existingLogAnalyticsName)
 
-var rgName = useExistingRg ? existingResourceGroupName : '${abbrs.resourceGroup}${environmentName}'
+// azd always manages its own RG for ephemeral resources (MI, Job).
+// Existing resources may live in a different RG.
+var rgName = '${abbrs.resourceGroup}${environmentName}'
+var existingRgName = !empty(existingResourceGroupName) ? existingResourceGroupName : rgName
 
 // ── Resource Group ──────────────────────────────────────────────────────────
-// Only created when not reusing an existing one. When an existing RG is used,
-// modules scope to it via resourceGroup(rgName) without declaring it here,
-// so its tags and properties are left untouched.
-resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = if (!useExistingRg) {
+resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: rgName
   location: location
   tags: tags
@@ -102,8 +103,7 @@ module monitoring 'modules/monitoring.bicep' = if (!useExistingEnv && !useExisti
 
 module existingMonitoringRef 'modules/existing-monitoring.bicep' = if (useExistingMonitoring) {
   name: 'existing-monitoring'
-  scope: resourceGroup(rgName)
-  dependsOn: [rg]
+  scope: resourceGroup(existingRgName)
   params: {
     name: existingLogAnalyticsName
   }
@@ -123,8 +123,7 @@ module acr 'modules/acr.bicep' = if (!useExistingAcr) {
 
 module existingAcrRef 'modules/existing-acr.bicep' = if (useExistingAcr) {
   name: 'existing-acr'
-  scope: resourceGroup(rgName)
-  dependsOn: [rg]
+  scope: resourceGroup(existingRgName)
   params: {
     name: existingAcrName
   }
@@ -145,8 +144,7 @@ module storage 'modules/storage.bicep' = if (!useExistingStorage) {
 
 module existingStorageRef 'modules/existing-storage.bicep' = if (useExistingStorage) {
   name: 'existing-storage'
-  scope: resourceGroup(rgName)
-  dependsOn: [rg]
+  scope: resourceGroup(existingRgName)
   params: {
     name: existingStorageAccountName
     allowSharedKeyAccess: useStorageKeys
@@ -170,8 +168,7 @@ module containerAppsEnv 'modules/container-apps-env.bicep' = if (!useExistingEnv
 
 module existingEnvRef 'modules/existing-container-apps-env.bicep' = if (useExistingEnv) {
   name: 'existing-container-apps-env'
-  scope: resourceGroup(rgName)
-  dependsOn: [rg]
+  scope: resourceGroup(existingRgName)
   params: {
     name: existingContainerAppsEnvName
     useGpu: useGpu
@@ -182,7 +179,7 @@ module existingEnvRef 'modules/existing-container-apps-env.bicep' = if (useExist
 // ── RBAC: AcrPull for Managed Identity (conditional) ────────────────────────
 module acrPullRole 'modules/acr-pull-role.bicep' = if (includeRbac) {
   name: 'acr-pull-role'
-  scope: resourceGroup(rgName)
+  scope: resourceGroup(useExistingAcr ? existingRgName : rgName)
   dependsOn: [rg]
   params: {
     containerRegistryName: useExistingAcr ? existingAcrRef.outputs.name : acr.outputs.name
@@ -193,7 +190,7 @@ module acrPullRole 'modules/acr-pull-role.bicep' = if (includeRbac) {
 // ── RBAC: Storage Blob Data Contributor for Managed Identity (conditional) ──
 module storageBlobRole 'modules/storage-blob-role.bicep' = if (includeRbac) {
   name: 'storage-blob-role'
-  scope: resourceGroup(rgName)
+  scope: resourceGroup(useExistingStorage ? existingRgName : rgName)
   dependsOn: [rg]
   params: {
     storageAccountName: useExistingStorage ? existingStorageRef.outputs.name : storage.outputs.name
@@ -202,7 +199,11 @@ module storageBlobRole 'modules/storage-blob-role.bicep' = if (includeRbac) {
 }
 
 // ── RBAC: Deployer roles (conditional) ──────────────────────────────────────
-module deployerRoles 'modules/deployer-roles.bicep' = if (!empty(deployerPrincipalId)) {
+// Skipped when existing resources are in a separate RG — the deployer-roles
+// module references both ACR and Storage by name and they must be in the same
+// scope. Use ./infra/scripts/assign-rbac.sh manually in that case.
+var canDeployDeployerRoles = !empty(deployerPrincipalId) && (existingRgName == rgName)
+module deployerRoles 'modules/deployer-roles.bicep' = if (canDeployDeployerRoles) {
   name: 'deployer-roles'
   scope: resourceGroup(rgName)
   dependsOn: [rg]
