@@ -7,11 +7,16 @@
 # Override with: azd env set FORCE_DELETE true
 set -euo pipefail
 
-EXISTING_RG=$(azd env get-value EXISTING_RESOURCE_GROUP 2>/dev/null || echo "")
-EXISTING_ACR=$(azd env get-value EXISTING_ACR_NAME 2>/dev/null || echo "")
-EXISTING_STORAGE=$(azd env get-value EXISTING_STORAGE_ACCOUNT_NAME 2>/dev/null || echo "")
-EXISTING_ENV=$(azd env get-value EXISTING_CONTAINER_APPS_ENV_NAME 2>/dev/null || echo "")
-EXISTING_LAW=$(azd env get-value EXISTING_LOG_ANALYTICS_NAME 2>/dev/null || echo "")
+# Read all env values once — azd env get-value prints errors to stdout for
+# missing keys, so we parse the full key=value dump instead.
+_env_values=$(azd env get-values 2>/dev/null || true)
+_get() { echo "$_env_values" | grep "^$1=" | cut -d= -f2- | tr -d '"' || true; }
+
+EXISTING_RG=$(_get EXISTING_RESOURCE_GROUP)
+EXISTING_ACR=$(_get EXISTING_ACR_NAME)
+EXISTING_STORAGE=$(_get EXISTING_STORAGE_ACCOUNT_NAME)
+EXISTING_ENV=$(_get EXISTING_CONTAINER_APPS_ENV_NAME)
+EXISTING_LAW=$(_get EXISTING_LOG_ANALYTICS_NAME)
 
 HAS_EXISTING=false
 EXISTING_LIST=""
@@ -55,7 +60,7 @@ echo "Running 'azd down' would delete the resource group and ALL"
 echo "resources inside it, including those listed above."
 echo ""
 
-FORCE_DELETE=$(azd env get-value FORCE_DELETE 2>/dev/null || echo "")
+FORCE_DELETE=$(_get FORCE_DELETE)
 
 if [[ "$FORCE_DELETE" == "true" ]]; then
   echo "⚡ FORCE_DELETE=true is set. Proceeding with deletion..."
