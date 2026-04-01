@@ -40,6 +40,9 @@
     },
     "existingContainerAppsEnvName": {
       "value": "${EXISTING_CONTAINER_APPS_ENV_NAME=}"
+    },
+    "existingLogAnalyticsName": {
+      "value": "${EXISTING_LOG_ANALYTICS_NAME=}"
     }
   }
 }

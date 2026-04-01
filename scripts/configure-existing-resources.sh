@@ -30,10 +30,10 @@ Resources that can be reused:
   • Azure Container Registry (ACR)
   • Storage Account
   • Container Apps Environment
+  • Log Analytics Workspace
 
 Resources always managed by the deployment:
   • Managed Identity
-  • Log Analytics Workspace (when creating a new Container Apps Environment)
   • Container Apps Job
 
 Prerequisites:
@@ -64,6 +64,7 @@ if [[ "${1:-}" == "--reset" ]]; then
   azd env set EXISTING_ACR_NAME ""
   azd env set EXISTING_STORAGE_ACCOUNT_NAME ""
   azd env set EXISTING_CONTAINER_APPS_ENV_NAME ""
+  azd env set EXISTING_LOG_ANALYTICS_NAME ""
   azd env set FORCE_DELETE ""
   echo ""
   echo "✅ Configuration reset. All resources will be created fresh on next 'azd provision'."
@@ -138,6 +139,7 @@ else
   SELECTED_ACR=""
   SELECTED_STORAGE=""
   SELECTED_ENV=""
+  SELECTED_LAW=""
 
   # Jump to summary
   echo ""
@@ -147,6 +149,7 @@ else
   echo "   Container Registry:         (new)"
   echo "   Storage Account:            (new)"
   echo "   Container Apps Environment: (new)"
+  echo "   Log Analytics Workspace:    (new)"
   echo "   Container Apps Job:         (always managed by deployment)"
   echo ""
   read -rp "   Apply this configuration? [Y/n]: " confirm
@@ -162,6 +165,7 @@ else
   azd env set EXISTING_ACR_NAME ""
   azd env set EXISTING_STORAGE_ACCOUNT_NAME ""
   azd env set EXISTING_CONTAINER_APPS_ENV_NAME ""
+  azd env set EXISTING_LOG_ANALYTICS_NAME ""
   echo ""
   echo "✅ Configuration saved. Run 'azd provision' to deploy."
   exit 0
@@ -257,6 +261,20 @@ select_resource "Container Apps Environment" "${CAE_ITEMS[@]}"
 SELECTED_ENV="$SELECTED"
 echo ""
 
+# ── Step 5: Log Analytics Workspace ───────────────────────────────────────────
+echo "── Step 5: Log Analytics Workspace ─────────────────────────"
+echo ""
+echo "   Querying Log Analytics Workspaces in $TARGET_RG..."
+
+LAW_ITEMS=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && LAW_ITEMS+=("$line")
+done < <(az monitor log-analytics workspace list -g "$TARGET_RG" --query "[].name" -o tsv 2>/dev/null)
+
+select_resource "Log Analytics Workspace" "${LAW_ITEMS[@]}"
+SELECTED_LAW="$SELECTED"
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "── Summary ───────────────────────────────────────────────"
 echo ""
@@ -272,6 +290,9 @@ echo ""
 [[ -n "$SELECTED_ENV" ]] \
   && echo "   Container Apps Environment: $SELECTED_ENV (existing)" \
   || echo "   Container Apps Environment: (new)"
+[[ -n "$SELECTED_LAW" ]] \
+  && echo "   Log Analytics Workspace:    $SELECTED_LAW (existing)" \
+  || echo "   Log Analytics Workspace:    (new)"
 echo "   Container Apps Job:         (always managed by deployment)"
 echo ""
 
@@ -291,6 +312,7 @@ azd env set EXISTING_RESOURCE_GROUP "${SELECTED_RG}"
 azd env set EXISTING_ACR_NAME "${SELECTED_ACR}"
 azd env set EXISTING_STORAGE_ACCOUNT_NAME "${SELECTED_STORAGE}"
 azd env set EXISTING_CONTAINER_APPS_ENV_NAME "${SELECTED_ENV}"
+azd env set EXISTING_LOG_ANALYTICS_NAME "${SELECTED_LAW}"
 
 # Set location from existing RG to ensure consistency
 if [[ -n "$SELECTED_RG" ]]; then

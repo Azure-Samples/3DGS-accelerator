@@ -11,6 +11,7 @@ EXISTING_RG=$(azd env get-value EXISTING_RESOURCE_GROUP 2>/dev/null || echo "")
 EXISTING_ACR=$(azd env get-value EXISTING_ACR_NAME 2>/dev/null || echo "")
 EXISTING_STORAGE=$(azd env get-value EXISTING_STORAGE_ACCOUNT_NAME 2>/dev/null || echo "")
 EXISTING_ENV=$(azd env get-value EXISTING_CONTAINER_APPS_ENV_NAME 2>/dev/null || echo "")
+EXISTING_LAW=$(azd env get-value EXISTING_LOG_ANALYTICS_NAME 2>/dev/null || echo "")
 
 HAS_EXISTING=false
 EXISTING_LIST=""
@@ -30,6 +31,10 @@ fi
 if [[ -n "$EXISTING_ENV" ]]; then
   HAS_EXISTING=true
   EXISTING_LIST+="   • Container Apps Environment: $EXISTING_ENV\n"
+fi
+if [[ -n "$EXISTING_LAW" ]]; then
+  HAS_EXISTING=true
+  EXISTING_LIST+="   • Log Analytics Workspace:    $EXISTING_LAW\n"
 fi
 
 if [[ "$HAS_EXISTING" != "true" ]]; then

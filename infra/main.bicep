@@ -48,6 +48,9 @@ param existingStorageAccountName string = ''
 @description('Name of an existing Container Apps Environment to reuse (must be in the target resource group). If empty, a new one is created.')
 param existingContainerAppsEnvName string = ''
 
+@description('Name of an existing Log Analytics workspace to reuse (must be in the target resource group). If empty, a new one is created — unless an existing Container Apps Environment is also provided, in which case monitoring is skipped entirely.')
+param existingLogAnalyticsName string = ''
+
 // ── Naming & Computed Variables ─────────────────────────────────────────────
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
@@ -57,6 +60,7 @@ var useExistingRg = !empty(existingResourceGroupName)
 var useExistingAcr = !empty(existingAcrName)
 var useExistingStorage = !empty(existingStorageAccountName)
 var useExistingEnv = !empty(existingContainerAppsEnvName)
+var useExistingMonitoring = !empty(existingLogAnalyticsName)
 
 var rgName = useExistingRg ? existingResourceGroupName : '${abbrs.resourceGroup}${environmentName}'
 
@@ -83,8 +87,9 @@ module managedIdentity 'modules/managed-identity.bicep' = {
 }
 
 // ── Monitoring ──────────────────────────────────────────────────────────────
-// Only needed when creating a new Container Apps Environment.
-module monitoring 'modules/monitoring.bicep' = if (!useExistingEnv) {
+// Created only when deploying a new Container Apps Environment AND no existing
+// Log Analytics workspace is provided.
+module monitoring 'modules/monitoring.bicep' = if (!useExistingEnv && !useExistingMonitoring) {
   name: 'monitoring'
   scope: resourceGroup(rgName)
   dependsOn: [rg]
@@ -92,6 +97,15 @@ module monitoring 'modules/monitoring.bicep' = if (!useExistingEnv) {
     name: '${abbrs.operationalInsightsWorkspace}-${resourceToken}'
     location: location
     tags: tags
+  }
+}
+
+module existingMonitoringRef 'modules/existing-monitoring.bicep' = if (useExistingMonitoring) {
+  name: 'existing-monitoring'
+  scope: resourceGroup(rgName)
+  dependsOn: [rg]
+  params: {
+    name: existingLogAnalyticsName
   }
 }
 
@@ -148,7 +162,7 @@ module containerAppsEnv 'modules/container-apps-env.bicep' = if (!useExistingEnv
     name: '${abbrs.appContainerAppsEnvironment}-${resourceToken}'
     location: location
     tags: tags
-    logAnalyticsWorkspaceId: monitoring.outputs.id
+    logAnalyticsWorkspaceId: useExistingMonitoring ? existingMonitoringRef.outputs.id : monitoring.outputs.id
     useGpu: useGpu
     gpuProfileType: gpuProfileType
   }

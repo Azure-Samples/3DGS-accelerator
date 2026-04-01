@@ -385,7 +385,7 @@ lifecycle is not managed by this deployment, and `azd down` will not delete them
 | User-Assigned Managed Identity | `modules/managed-identity.bicep` | Authenticate to ACR and Storage | No (always created) |
 | Azure Container Registry (Basic) | `modules/acr.bicep` | Store GPU Docker images | ✅ Yes |
 | Storage Account + 4 containers | `modules/storage.bicep` | `input`, `output`, `processed`, `error` | ✅ Yes |
-| Log Analytics Workspace | `modules/monitoring.bicep` | Container log aggregation | No (skipped when reusing env) |
+| Log Analytics Workspace | `modules/monitoring.bicep` | Container log aggregation | ✅ Yes |
 | Container Apps Environment | `modules/container-apps-env.bicep` | GPU workload profile (T4) | ✅ Yes |
 | Container Apps Job (Manual trigger) | `modules/container-apps-job.bicep` | The processor job itself | No (always created) |
 
@@ -553,6 +553,7 @@ Set these via `azd env set <NAME> <VALUE>` before provisioning:
 | `EXISTING_ACR_NAME` | *(empty)* | Name of an existing Azure Container Registry to reuse |
 | `EXISTING_STORAGE_ACCOUNT_NAME` | *(empty)* | Name of an existing Storage Account to reuse |
 | `EXISTING_CONTAINER_APPS_ENV_NAME` | *(empty)* | Name of an existing Container Apps Environment to reuse |
+| `EXISTING_LOG_ANALYTICS_NAME` | *(empty)* | Name of an existing Log Analytics workspace to reuse |
 | `FORCE_DELETE` | *(empty)* | Set to `true` to allow `azd down` when existing resources are configured |
 
 > **Tip:** Use `./scripts/configure-existing-resources.sh` to interactively set the
@@ -657,7 +658,8 @@ resource group, a team ACR, or a storage account with data), you can configure `
 | Resource Group | `EXISTING_RESOURCE_GROUP` | Deploy into this RG instead of creating `rg-<env-name>` |
 | Azure Container Registry | `EXISTING_ACR_NAME` | Reference existing ACR; skip `modules/acr.bicep` |
 | Storage Account | `EXISTING_STORAGE_ACCOUNT_NAME` | Reference existing storage; skip `modules/storage.bicep`. Required blob containers (`input`, `output`, `processed`, `error`) must already exist |
-| Container Apps Environment | `EXISTING_CONTAINER_APPS_ENV_NAME` | Reference existing env; skip `modules/container-apps-env.bicep` and `modules/monitoring.bicep` (Log Analytics) |
+| Container Apps Environment | `EXISTING_CONTAINER_APPS_ENV_NAME` | Reference existing env; skip `modules/container-apps-env.bicep` |
+| Log Analytics Workspace | `EXISTING_LOG_ANALYTICS_NAME` | Reference existing workspace; skip `modules/monitoring.bicep`. When reusing an existing Container Apps Environment, this is not needed (the existing env already has logging configured) |
 
 Resources that are **always** created by the deployment, regardless of configuration:
 - **Managed Identity** — a new user-assigned identity is always created
@@ -689,6 +691,7 @@ azd env set EXISTING_RESOURCE_GROUP "my-shared-rg"
 azd env set EXISTING_ACR_NAME "myteamacr"
 azd env set EXISTING_STORAGE_ACCOUNT_NAME "mystorageaccount"
 azd env set EXISTING_CONTAINER_APPS_ENV_NAME "my-cae"
+azd env set EXISTING_LOG_ANALYTICS_NAME "my-law"
 ```
 
 Leave a variable empty (or omit it) to create that resource fresh.
