@@ -122,3 +122,53 @@ Upload outputs         ~2s         4 files to output container
 Move to processed      ~2s         3 videos archived
 TOTAL                  ~2.2 min
 ```
+
+## Existing Resource Preservation
+
+**Commit:** `153c958`
+
+Added the ability to reuse pre-existing Azure resources (Resource Group, ACR, Storage
+Account, Container Apps Environment) instead of creating new ones. Existing resources are
+referenced via Bicep's `existing` keyword — their lifecycle is not managed by the
+deployment and they are protected from accidental deletion by `azd down`.
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `infra/modules/existing-acr.bicep` | References an existing Azure Container Registry via `existing` keyword |
+| `infra/modules/existing-storage.bicep` | References an existing Storage Account via `existing` keyword |
+| `infra/modules/existing-container-apps-env.bicep` | References an existing Container Apps Environment via `existing` keyword |
+| `infra/scripts/hooks/predown.sh` | azd `predown` hook: blocks `azd down` when existing resources are configured (override with `FORCE_DELETE=true`) |
+| `scripts/configure-existing-resources.sh` | Interactive wizard to select existing Azure resources for reuse; sets `EXISTING_*` env vars in azd |
+
+### Modified Files
+
+**`azure.yaml`** — Added `predown` hook pointing to `infra/scripts/hooks/predown.sh`
+with `continueOnError: false` so a non-zero exit blocks teardown.
+
+**`infra/main.bicep`** — Conditional resource creation:
+- Added 4 new parameters: `existingResourceGroupName`, `existingAcrName`,
+  `existingStorageAccountName`, `existingContainerAppsEnvName`
+- Resource Group, ACR, Storage, Container Apps Environment, and Monitoring modules
+  are conditionally deployed (`if (!useExisting*)`)
+- When existing resources are configured, corresponding `existing-*.bicep` reference
+  modules are deployed instead
+- All downstream references (RBAC, Job, outputs) resolve via ternary expressions:
+  `useExisting* ? existingRef.outputs.* : newResource.outputs.*`
+- All module `scope:` changed from `rg` to `resourceGroup(rgName)` with explicit
+  `dependsOn: [rg]` to support both new and existing resource groups
+
+**`infra/main.parameters.json`** — Added parameter bindings for the 4 `EXISTING_*`
+environment variables with `${VAR=}` syntax (defaults to empty string).
+
+### How It Works
+
+1. **Configuration:** `scripts/configure-existing-resources.sh` (interactive) or
+   manual `azd env set EXISTING_*` sets environment variables
+2. **Provisioning:** `infra/main.parameters.json` passes `EXISTING_*` env vars to
+   Bicep parameters. `main.bicep` conditionally creates or references resources
+3. **Teardown protection:** `azure.yaml` registers the `predown` hook which reads
+   `EXISTING_*` values and blocks `azd down` unless `FORCE_DELETE=true`
+4. **Reset:** `./scripts/configure-existing-resources.sh --reset` clears all
+   `EXISTING_*` variables, returning to fresh-resource mode
