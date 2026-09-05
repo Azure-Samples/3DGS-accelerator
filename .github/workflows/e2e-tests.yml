@@ -19,7 +19,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -28,7 +28,7 @@ jobs:
           components: rustfmt, clippy
       
       - name: Cache Cargo dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/bin/
@@ -85,7 +85,7 @@ jobs:
       
       - name: Upload test artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-test-artifacts
           path: |
@@ -99,7 +99,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -107,7 +107,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
       
       - name: Cache Cargo dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/bin/
